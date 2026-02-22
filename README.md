@@ -1,109 +1,109 @@
 # C64_AI_Companion
 
-## Descripción
-Este proyecto tiene como objetivo crear un modelo LLM (Large Language Model) tuneado con conocimiento específico sobre el Commodore 64, utilizando el modelo base Mistral AI Ministral 3 Thinking de 14B en formato bf16. El fine-tuning se realizará en un servidor Corsair AI Workstation con GPU AMD y 96GB de VRAM.
+## Description
+This project aims to create a fine-tuned LLM (Large Language Model) with specific knowledge about the Commodore 64, using the Mistral AI Ministral 3 Thinking 14B base model in bf16 format. The fine-tuning will be performed on a Corsair AI Workstation server with an AMD GPU and 96GB of VRAM.
 
-## Requisitos del Sistema
+## System Requirements
 
 ### Hardware
-- **GPU**: AMD con soporte para ROCm 7.x.
-- **VRAM**: 96GB mínimo.
-- **Almacenamiento**: NVMe recomendado para datos y modelos.
+- **GPU**: AMD with ROCm 7.x support.
+- **VRAM**: 96GB minimum.
+- **Storage**: NVMe recommended for data and models.
 
 ### Software
-- **Sistema Operativo**: Linux (Ubuntu 22.04 LTS recomendado).
-- **Controladores**: ROCm 7.x.
-- **Herramientas preinstaladas**:
+- **Operating System**: Linux (Ubuntu 22.04 LTS recommended).
+- **Drivers**: ROCm 7.x.
+- **Preinstalled Tools**:
   - `llama.cpp`
   - `ollama`
   - `gh` (GitHub CLI)
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 C64_AI_Companion/
-├── data/                  # Datos de entrenamiento y validación
-├── models/               # Modelos guardados
-├── scripts/              # Scripts para entrenamiento y evaluación
-├── docs/                 # Documentación adicional
-├── AGENTS.md             # Mejores prácticas para agentes de IA
-├── README.md             # Este archivo
-└── .gitignore            # Archivos ignorados por Git
+├── data/                  # Training and validation data
+├── models/               # Saved models
+├── scripts/              # Training and evaluation scripts
+├── docs/                 # Additional documentation
+├── AGENTS.md             # Best practices for AI agents
+├── README.md             # This file
+└── .gitignore            # Files ignored by Git
 ```
 
-## Configuración Inicial
+## Initial Setup
 
-### 1. Clonar el Repositorio
+### 1. Clone the Repository
 ```bash
 gh repo clone ibitato/C64_AI_Companion
 cd C64_AI_Companion
 ```
 
-### 2. Configurar el Entorno Virtual
+### 2. Set Up the Virtual Environment
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-### 3. Instalar Dependencias
+### 3. Install Dependencies
 ```bash
 pip install torch transformers datasets peft accelerate flash-attn lm-eval
 ```
 
-## Preparación de Datos
+## Data Preparation
 
-### 1. Descargar Datos
-Los datos de entrenamiento deben almacenarse en el directorio `data/`. Ejemplo de estructura:
+### 1. Download Data
+Training data should be stored in the `data/` directory. Example structure:
 
 ```
 data/
-├── raw/          # Datos sin procesar
-├── processed/   # Datos procesados y listos para entrenamiento
-└── val/          # Datos de validación
+├── raw/          # Raw data
+├── processed/   # Processed data ready for training
+└── val/          # Validation data
 ```
 
-### 2. Preprocesamiento
-Ejemplo de script para preprocesar datos:
+### 2. Preprocessing
+Example script for preprocessing data:
 
 ```python
 from datasets import load_dataset
 
-# Cargar datos
+# Load data
 dataset = load_dataset("csv", data_files={"train": "data/raw/train.csv", "val": "data/raw/val.csv"})
 
-# Tokenizar datos
+# Tokenize data
 def tokenize_function(examples):
     return tokenizer(examples["text"], padding="max_length", truncation=True)
 
 tokenized_datasets = dataset.map(tokenize_function, batched=True)
 
-# Guardar datos procesados
+# Save processed data
 tokenized_datasets.save_to_disk("data/processed")
 ```
 
-## Fine-Tuning del Modelo
+## Model Fine-Tuning
 
-### 1. Descargar Modelo Base
+### 1. Download Base Model
 ```bash
 ollama pull mistral:14b
 ```
 
-### 2. Configurar Script de Entrenamiento
-Ejemplo de script de entrenamiento (`scripts/train.py`):
+### 2. Set Up Training Script
+Example training script (`scripts/train.py`):
 
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 from datasets import load_from_disk
 
-# Cargar modelo y tokenizador
+# Load model and tokenizer
 model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-3-Thinking-14B", torch_dtype=torch.bfloat16)
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-3-Thinking-14B")
 
-# Cargar datos
+# Load data
 train_dataset = load_from_disk("data/processed/train")
 val_dataset = load_from_disk("data/processed/val")
 
-# Configurar argumentos de entrenamiento
+# Set up training arguments
 training_args = TrainingArguments(
     output_dir="./results",
     per_device_train_batch_size=8,
@@ -114,7 +114,7 @@ training_args = TrainingArguments(
     fp16=True,
 )
 
-# Inicializar Trainer
+# Initialize Trainer
 trainer = Trainer(
     model=model,
     args=training_args,
@@ -122,21 +122,21 @@ trainer = Trainer(
     eval_dataset=val_dataset,
 )
 
-# Entrenar modelo
+# Train model
 trainer.train()
 
-# Guardar modelo
+# Save model
 trainer.save_model("models/c64-finetuned")
 ```
 
-### 3. Ejecutar Entrenamiento
+### 3. Run Training
 ```bash
 python scripts/train.py
 ```
 
-## Evaluación del Modelo
+## Model Evaluation
 
-### 1. Cargar Modelo Entrenado
+### 1. Load Trained Model
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -144,7 +144,7 @@ model = AutoModelForCausalLM.from_pretrained("models/c64-finetuned")
 tokenizer = AutoTokenizer.from_pretrained("models/c64-finetuned")
 ```
 
-### 2. Evaluar con LM Evaluation Harness
+### 2. Evaluate with LM Evaluation Harness
 ```python
 from lm_eval import evaluator
 
@@ -155,38 +155,49 @@ results = evaluator.simple_evaluate(
 )
 ```
 
-### 3. Pruebas Manuales
+### 3. Manual Testing
 ```python
-input_text = "Explica el Commodore 64"
+input_text = "Explain the Commodore 64"
 inputs = tokenizer(input_text, return_tensors="pt")
 outputs = model.generate(**inputs, max_length=200)
 print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 ```
 
-## Contribución
+## Contribution
 
-### 1. Crear un Branch
+### 1. Create a Branch
 ```bash
-git checkout -b feature/nueva-caracteristica
+git checkout -b feature/new-feature
 ```
 
-### 2. Hacer Commits
+### 2. Make Commits
 ```bash
-git commit -m "Añadir nueva característica"
+git commit -m "Add new feature"
 ```
 
-### 3. Crear Pull Request
+### 3. Create Pull Request
 ```bash
 gh pr create --fill
 ```
 
-## Licencia
-Este proyecto está bajo la licencia MIT. Consulta el archivo `LICENSE` para más detalles.
+## License
+This project is licensed under the MIT License. See the `LICENSE` file for more details.
 
-## Contacto
-Para preguntas o sugerencias, abre un issue en el repositorio o contacta al mantenedor.
+## Contact
+For questions or suggestions, open an issue in the repository or contact the maintainer.
 
-## Recursos Adicionales
-- [Documentación de ROCm](https://rocm.docs.amd.com/)
+## Additional Resources
+- [ROCm Documentation](https://rocm.docs.amd.com/)
 - [Hugging Face Transformers](https://huggingface.co/docs/transformers/index)
 - [llama.cpp](https://github.com/ggerganov/llama.cpp)
+
+## Credits
+
+This project was developed using the following tools and models:
+
+- **Mistral AI Vibe CLI**: Used as the development agent for project initialization and management.
+- **Devstral 2 Model**: Utilized as the development LLM for generating documentation and code.
+
+### Author
+- **David R. Lopez B.**
+- Email: ibitato@gmail.com

@@ -1,64 +1,64 @@
-# Mejores Prácticas para el Uso de Agentes de IA en el Proyecto C64_AI_Companion
+# Best Practices for Using AI Agents in the C64_AI_Companion Project
 
-## Introducción
-Este documento describe las mejores prácticas para el uso de agentes de IA en el contexto del fine-tuning de modelos LLM para el conocimiento del Commodore 64. El objetivo es garantizar la eficiencia, reproducibilidad y mantenimiento del proyecto.
+## Introduction
+This document describes the best practices for using AI agents in the context of fine-tuning LLM models for Commodore 64 knowledge. The goal is to ensure efficiency, reproducibility, and maintainability of the project.
 
-## 1. Configuración del Entorno
+## 1. Environment Setup
 
 ### 1.1. Hardware
-- **Requisitos mínimos**:
-  - GPU AMD con soporte para ROCm 7.x.
-  - 96GB de VRAM para manejar modelos grandes como Mistral AI Ministral 3 Thinking (14B).
-  - Almacenamiento rápido (NVMe recomendado) para datos y modelos.
+- **Minimum Requirements**:
+  - AMD GPU with ROCm 7.x support.
+  - 96GB of VRAM to handle large models like Mistral AI Ministral 3 Thinking (14B).
+  - Fast storage (NVMe recommended) for data and models.
 
 ### 1.2. Software
-- **Sistema Operativo**: Linux (Ubuntu 22.04 LTS recomendado).
-- **Controladores**: ROCm 7.x instalado y configurado.
-- **Herramientas preinstaladas**:
-  - `llama.cpp` para inferencia eficiente.
-  - `ollama` para gestión de modelos.
-  - `gh` (GitHub CLI) para gestión del repositorio.
+- **Operating System**: Linux (Ubuntu 22.04 LTS recommended).
+- **Drivers**: ROCm 7.x installed and configured.
+- **Preinstalled Tools**:
+  - `llama.cpp` for efficient inference.
+  - `ollama` for model management.
+  - `gh` (GitHub CLI) for repository management.
 
-### 1.3. Entorno de Python
-- **Versión de Python**: 3.10 o superior.
-- **Entorno virtual**: Usar `venv` o `conda` para aislar dependencias.
+### 1.3. Python Environment
+- **Python Version**: 3.10 or higher.
+- **Virtual Environment**: Use `venv` or `conda` to isolate dependencies.
   ```bash
   python -m venv venv
   source venv/bin/activate
   ```
 
-## 2. Gestión de Modelos
+## 2. Model Management
 
-### 2.1. Descarga y Almacenamiento
-- **Ubicación**: Almacenar modelos en el directorio `models/`.
-- **Formato**: Preferir formatos optimizados como `bf16` para reducir uso de memoria.
-- **Ejemplo de descarga con `ollama`**:
+### 2.1. Download and Storage
+- **Location**: Store models in the `models/` directory.
+- **Format**: Prefer optimized formats like `bf16` to reduce memory usage.
+- **Example download with `ollama`**:
   ```bash
   ollama pull mistral:14b
   ```
 
-### 2.2. Conversión de Modelos
-- Usar herramientas como `llama.cpp` para convertir modelos a formatos eficientes:
+### 2.2. Model Conversion
+- Use tools like `llama.cpp` to convert models to efficient formats:
   ```bash
   python -m llama_cpp.convert --outfile models/mistral-14b.gguf --outtype q4_0 mistral-14b.gguf
   ```
 
 ## 3. Fine-Tuning
 
-### 3.1. Preparación de Datos
-- **Ubicación**: Almacenar datos en el directorio `data/`.
-- **Formato**: Usar formatos estructurados como JSON o CSV para facilitar el procesamiento.
-- **Preprocesamiento**:
-  - Limpieza de datos (eliminar ruido, corregir errores).
-  - Tokenización con el tokenizador del modelo base.
+### 3.1. Data Preparation
+- **Location**: Store data in the `data/` directory.
+- **Format**: Use structured formats like JSON or CSV for easier processing.
+- **Preprocessing**:
+  - Data cleaning (remove noise, correct errors).
+  - Tokenization with the base model's tokenizer.
 
-### 3.2. Configuración del Entrenamiento
-- **Hiperparámetros**:
-  - `batch_size`: Ajustar según la VRAM disponible (ejemplo: 8 para 96GB VRAM).
-  - `learning_rate`: Valores típicos entre 1e-5 y 5e-5.
-  - `epochs`: Comenzar con 3-5 y ajustar según resultados.
+### 3.2. Training Configuration
+- **Hyperparameters**:
+  - `batch_size`: Adjust based on available VRAM (example: 8 for 96GB VRAM).
+  - `learning_rate`: Typical values between 1e-5 and 5e-5.
+  - `epochs`: Start with 3-5 and adjust based on results.
 
-- **Ejemplo de script de entrenamiento**:
+- **Example training script**:
   ```python
   from transformers import Trainer, TrainingArguments
   
@@ -81,47 +81,47 @@ Este documento describe las mejores prácticas para el uso de agentes de IA en e
   trainer.train()
   ```
 
-### 3.3. Optimización para AMD
-- **ROCm**: Asegurar que PyTorch esté compilado con soporte para ROCm.
-- **Flash Attention**: Habilitar para mejorar el rendimiento en GPUs AMD.
+### 3.3. Optimization for AMD
+- **ROCm**: Ensure PyTorch is compiled with ROCm support.
+- **Flash Attention**: Enable to improve performance on AMD GPUs.
   ```bash
   pip install flash-attn --no-build-isolation
   ```
 
-## 4. Documentación
+## 4. Documentation
 
-### 4.1. Mantenimiento de la Documentación
-- **Actualización continua**: La documentación debe actualizarse con cada cambio significativo en el proyecto.
-- **Formato**: Usar Markdown para facilitar la lectura y edición.
-- **Estructura**:
-  - `README.md`: Descripción general del proyecto.
-  - `AGENTS.md`: Mejores prácticas y guías técnicas.
-  - `docs/`: Documentación detallada (ejemplo: guías de instalación, tutoriales).
+### 4.1. Documentation Maintenance
+- **Continuous Updates**: Documentation should be updated with every significant change in the project.
+- **Format**: Use Markdown for easy reading and editing.
+- **Structure**:
+  - `README.md`: General project description.
+  - `AGENTS.md`: Best practices and technical guides.
+  - `docs/`: Detailed documentation (e.g., installation guides, tutorials).
 
-### 4.2. Ejemplo de Estructura de Documentación
+### 4.2. Example Documentation Structure
 ```markdown
-# Título del Documento
+# Document Title
 
-## Sección 1
-Descripción detallada.
+## Section 1
+Detailed description.
 
-### Subsección 1.1
-- Lista de items.
-- Código de ejemplo.
+### Subsection 1.1
+- List of items.
+- Code example.
 
 ```python
-# Ejemplo de código
+# Code example
 def hello():
     print("Hello, C64!")
 ```
 ```
 
-## 5. Evaluación y Pruebas
+## 5. Evaluation and Testing
 
-### 5.1. Métricas de Evaluación
-- **Precisión**: Medir la exactitud de las respuestas del modelo.
-- **Pérdida (Loss)**: Monitorear la pérdida durante el entrenamiento.
-- **Ejemplo de evaluación**:
+### 5.1. Evaluation Metrics
+- **Accuracy**: Measure the accuracy of the model's responses.
+- **Loss**: Monitor loss during training.
+- **Evaluation Example**:
   ```python
   from lm_eval import evaluator
   
@@ -132,33 +132,33 @@ def hello():
   )
   ```
 
-### 5.2. Pruebas Locales
-- **Inferencia con `llama.cpp`**:
+### 5.2. Local Testing
+- **Inference with `llama.cpp`**:
   ```bash
-  ./main -m models/mistral-14b.gguf -p "Explica el Commodore 64"
+  ./main -m models/mistral-14b.gguf -p "Explain the Commodore 64"
   ```
 
-## 6. Colaboración y Control de Versiones
+## 6. Collaboration and Version Control
 
-### 6.1. Git y GitHub
-- **Branches**: Usar branches para nuevas características o experimentos.
+### 6.1. Git and GitHub
+- **Branches**: Use branches for new features or experiments.
   ```bash
-  git checkout -b feature/nueva-caracteristica
+  git checkout -b feature/new-feature
   ```
-- **Commits**: Mensajes descriptivos y atómicos.
+- **Commits**: Descriptive and atomic messages.
   ```bash
-  git commit -m "Añadir script de preprocesamiento de datos"
+  git commit -m "Add data preprocessing script"
   ```
-- **Pull Requests**: Revisión de código antes de fusionar a `main`.
+- **Pull Requests**: Code review before merging to `main`.
 
-### 6.2. Issues y Project Management
-- Usar GitHub Issues para rastrear tareas y bugs.
-- Etiquetar issues con labels como `bug`, `enhancement`, `documentation`.
+### 6.2. Issues and Project Management
+- Use GitHub Issues to track tasks and bugs.
+- Label issues with labels like `bug`, `enhancement`, `documentation`.
 
-## 7. Seguridad
+## 7. Security
 
-### 7.1. Manejo de Datos Sensibles
-- **Exclusión de archivos**: Usar `.gitignore` para evitar subir datos sensibles.
+### 7.1. Handling Sensitive Data
+- **File Exclusion**: Use `.gitignore` to avoid uploading sensitive data.
   ```gitignore
   # .gitignore
   *.gguf
@@ -166,23 +166,34 @@ def hello():
   venv/
   ```
 
-### 7.2. Dependencias
-- **Auditoría**: Revisar dependencias regularmente con herramientas como `safety` o `dependabot`.
+### 7.2. Dependencies
+- **Audit**: Regularly review dependencies with tools like `safety` or `dependabot`.
   ```bash
   pip install safety
   safety check
   ```
 
-## 8. Recursos Adicionales
+## 8. Additional Resources
 
-### 8.1. Documentación Oficial
+### 8.1. Official Documentation
 - [ROCm Documentation](https://rocm.docs.amd.com/)
 - [Hugging Face Transformers](https://huggingface.co/docs/transformers/index)
 - [llama.cpp](https://github.com/ggerganov/llama.cpp)
 
-### 8.2. Comunidades
+### 8.2. Communities
 - [Hugging Face Forums](https://discuss.huggingface.co/)
 - [ROCm GitHub](https://github.com/RadeonOpenCompute/ROCm)
 
-## Conclusión
-Siguiendo estas mejores prácticas, el proyecto C64_AI_Companion podrá mantener un flujo de trabajo eficiente, reproducible y bien documentado. La actualización continua de la documentación es clave para el éxito a largo plazo.
+## Conclusion
+By following these best practices, the C64_AI_Companion project can maintain an efficient, reproducible, and well-documented workflow. Continuous documentation updates are key to long-term success.
+
+## Tools Used
+
+The following tools and models were used in the development of this project:
+
+- **Mistral AI Vibe CLI**: A CLI agent used for project initialization, file creation, and management.
+- **Devstral 2 Model**: An LLM model used for generating documentation, code, and providing guidance throughout the project.
+
+### Author
+- **David R. Lopez B.**
+- Email: ibitato@gmail.com
