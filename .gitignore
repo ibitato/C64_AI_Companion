@@ -1,0 +1,49 @@
+# .gitignore para el proyecto C64_AI_Companion
+
+# Archivos de modelos
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# Datos sin procesar
+data/raw/*
+
+# Entorno virtual
+venv/
+.env
+
+# Archivos de configuración local
+*.local
+*.env.local
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de compilación
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de logs y resultados
+tmp/
+logs/
+results/
+
+# Archivos de IDE
+.idea/
+.vscode/
+*.swp
+
+# Archivos de dependencias
+Pipfile.lock
+poetry.lock
+
+# Archivos de documentación generados
+docs/_build/
+
+# Archivos de datos procesados (opcional, dependiendo del tamaño)
+# data/processed/*
