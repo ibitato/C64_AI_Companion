@@ -29,6 +29,8 @@ docker compose run --rm trainer bash scripts/container/train.sh
 - `epochs`: 3
 - `precision`: `bf16`
 - `use_lora`: activado
+- `assistant_only_loss`: desactivado por defecto para este template
+- `packing`: desactivado por defecto (activar solo si validas atención compatible)
 
 ## 4. Comandos de referencia
 
@@ -53,8 +55,8 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --sft-dir data/processed/sft \
   --output-dir models/fine-tuned-sft \
   --precision bf16 \
-  --assistant-only-loss \
-  --packing \
+  --no-assistant-only-loss \
+  --no-packing \
   --use-lora
 ```
 
@@ -68,6 +70,8 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --sft-dir data/processed/sft \
   --output-dir models/fine-tuned \
   --precision bf16 \
+  --no-assistant-only-loss \
+  --no-packing \
   --use-lora
 ```
 

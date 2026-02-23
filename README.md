@@ -82,6 +82,10 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --max-steps 20
 ```
 
+Nota SFT:
+- con el chat template actual de `Ministral-3-8B-Thinking`, el proyecto usa por defecto
+  `assistant_only_loss=False` y `packing=False` para evitar incompatibilidades de máscara.
+
 ## Tests
 
 ```bash

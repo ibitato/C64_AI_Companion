@@ -36,6 +36,8 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --sft-dir data/processed/sft \
   --output-dir models/fine-tuned \
   --precision bf16 \
+  --no-assistant-only-loss \
+  --no-packing \
   --use-lora
 ```
 

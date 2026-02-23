@@ -68,9 +68,9 @@ def parse_args() -> argparse.Namespace:
         default="language_qkvo",
     )
 
-    parser.add_argument("--assistant-only-loss", action="store_true", default=True)
+    parser.add_argument("--assistant-only-loss", action="store_true", default=False)
     parser.add_argument("--no-assistant-only-loss", dest="assistant_only_loss", action="store_false")
-    parser.add_argument("--packing", action="store_true", default=True)
+    parser.add_argument("--packing", action="store_true", default=False)
     parser.add_argument("--no-packing", dest="packing", action="store_false")
     parser.add_argument("--allow-cpu", action="store_true", help="Allow CPU fallback (debug only).")
 
@@ -386,6 +386,15 @@ def run_sft_phase(
 ) -> tuple[str, str | None]:
     print("=== SFT phase ===")
     model, tokenizer = load_base_model_and_tokenizer(model_path, device=device, dtype=dtype)
+
+    if args.assistant_only_loss:
+        chat_template = tokenizer.chat_template or ""
+        if "{% generation %}" not in chat_template:
+            print(
+                "assistant_only_loss requested, but tokenizer chat template does not expose "
+                "{% generation %} mask blocks. Disabling assistant_only_loss for this run."
+            )
+            args.assistant_only_loss = False
 
     if adapter_path:
         model = maybe_attach_adapter(model, adapter_path)
