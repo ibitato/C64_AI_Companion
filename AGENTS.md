@@ -7,40 +7,61 @@ This document describes the best practices for using AI agents in the context of
 
 ### 1.1. Hardware
 - **Minimum Requirements**:
-  - AMD GPU with ROCm 7.x support.
-  - 96GB of VRAM to handle large models like Mistral AI Ministral 3 Thinking (14B).
+  - AMD RYZEN AI MAX+ 395 w/ Radeon 8060S Graphics (16 cores, 32 threads).
+  - 74.32 GiB of VRAM.
+  - 30 GiB of RAM.
   - Fast storage (NVMe recommended) for data and models.
 
 ### 1.2. Software
-- **Operating System**: Linux (Ubuntu 22.04 LTS recommended).
-- **Drivers**: ROCm 7.x installed and configured.
+- **Operating System**: Fedora Linux 43 (Server Edition).
+- **Kernel**: 6.18.8-200.fc43.x86_64.
+- **Drivers**: ROCm 6.4.4 installed and configured.
 - **Preinstalled Tools**:
   - `llama.cpp` for efficient inference.
   - `ollama` for model management.
   - `gh` (GitHub CLI) for repository management.
+  - `vulkan-tools` for GPU diagnostics.
+  - `mesa-demos` for OpenGL diagnostics.
 
 ### 1.3. Python Environment
-- **Python Version**: 3.10 or higher.
-- **Virtual Environment**: Use `venv` or `conda` to isolate dependencies.
+- **Python Version**: 3.10.
+- **Virtual Environment**: Use `venv` to isolate dependencies. The virtual environment will be local to the project.
   ```bash
-  python -m venv venv
+  python3.10 -m venv venv
   source venv/bin/activate
   ```
 
 ## 2. Model Management
+
+### 2.0. Mandatory Model Location Policy (Hard Requirement)
+- The **only valid directory** for original/base models in this project is:
+  - `./models/`
+- The canonical model path for this project is:
+  - `./models/Ministral-3-8B-Thinking/`
+- Do **not** use or depend on global user cache paths (for example `~/.cache/huggingface/`) as runtime model locations.
+- Any download command must target the local project path explicitly (for example with `--local-dir ./models/Ministral-3-8B-Thinking`).
+- If a model exists outside `./models/`, it is considered out-of-scope for this repository workflow.
+- Fine-tuning scripts, docs, and examples must reference only project-local model paths under `./models/`.
 
 ### 2.1. Download and Storage
 - **Location**: Store models in the `models/` directory.
 - **Format**: Prefer optimized formats like `bf16` to reduce memory usage.
 - **Example download with `ollama`**:
   ```bash
-  ollama pull mistral:14b
+  # Download to the only valid local path:
+  hf download mistralai/Ministral-3-8B-Reasoning-2512 --local-dir ./models/Ministral-3-8B-Thinking
   ```
 
 ### 2.2. Model Conversion
 - Use tools like `llama.cpp` to convert models to efficient formats:
   ```bash
-  python -m llama_cpp.convert --outfile models/mistral-14b.gguf --outtype q4_0 mistral-14b.gguf
+  python -m llama_cpp.convert --outfile models/mistral-8b.gguf --outtype q4_0 mistral-8b.gguf
+  ```
+
+### 2.3. ROCm 6.4.4 Installation
+- For GPU acceleration, install ROCm 6.4.4 on Fedora 43:
+  ```bash
+  sudo dnf install rocm
   ```
 
 ## 3. Fine-Tuning
@@ -51,10 +72,17 @@ This document describes the best practices for using AI agents in the context of
 - **Preprocessing**:
   - Data cleaning (remove noise, correct errors).
   - Tokenization with the base model's tokenizer.
+  - Data formatting (convert to plain text or Markdown).
+  - Data augmentation (add additional context or information).
+  - Data splitting (split into training, validation, and test sets).
+  - Data balancing (ensure no bias in the data).
+  - Data validation (ensure accuracy and relevance).
+  - Data documentation (document the data preparation process).
+- **Python Scripts**: All data preprocessing will be done using Python scripts.
 
 ### 3.2. Training Configuration
 - **Hyperparameters**:
-  - `batch_size`: Adjust based on available VRAM (example: 8 for 96GB VRAM).
+  - `batch_size`: Adjust based on available VRAM (example: 8 for 74.32 GiB VRAM).
   - `learning_rate`: Typical values between 1e-5 and 5e-5.
   - `epochs`: Start with 3-5 and adjust based on results.
 
@@ -80,12 +108,25 @@ This document describes the best practices for using AI agents in the context of
   
   trainer.train()
   ```
+- **Python Environment**: Ensure all training scripts are run within the Python 3.10 virtual environment.
 
 ### 3.3. Optimization for AMD
 - **ROCm**: Ensure PyTorch is compiled with ROCm support.
 - **Flash Attention**: Enable to improve performance on AMD GPUs.
   ```bash
   pip install flash-attn --no-build-isolation
+  ```
+- **Environment Variable**: Set the environment variable for GPU compatibility.
+  ```bash
+  export HSA_OVERRIDE_GFX_VERSION=10.3.0
+  ```
+- **Python Environment**: Use the `requirements.txt` file to install all necessary Python packages.
+  ```bash
+  pip install -r requirements.txt
+  ```
+- **PyTorch with ROCm**: Install PyTorch with ROCm 6.4 support. PyTorch with ROCm 6.4 is available for Python 3.10.
+  ```bash
+  pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.4
   ```
 
 ## 4. Documentation
@@ -97,6 +138,7 @@ This document describes the best practices for using AI agents in the context of
   - `README.md`: General project description.
   - `AGENTS.md`: Best practices and technical guides.
   - `docs/`: Detailed documentation (e.g., installation guides, tutorials).
+- **Python Scripts**: All documentation examples and scripts will be in Python 3.10.
 
 ### 4.2. Example Documentation Structure
 ```markdown
@@ -135,7 +177,7 @@ def hello():
 ### 5.2. Local Testing
 - **Inference with `llama.cpp`**:
   ```bash
-  ./main -m models/mistral-14b.gguf -p "Explain the Commodore 64"
+  ./main -m models/mistral-8b.gguf -p "Explain the Commodore 64"
   ```
 
 ## 6. Collaboration and Version Control
@@ -150,6 +192,7 @@ def hello():
   git commit -m "Add data preprocessing script"
   ```
 - **Pull Requests**: Code review before merging to `main`.
+- **Python Environment**: Ensure all scripts and code are compatible with Python 3.10.
 
 ### 6.2. Issues and Project Management
 - Use GitHub Issues to track tasks and bugs.

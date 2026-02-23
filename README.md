@@ -1,22 +1,27 @@
 # C64_AI_Companion
 
 ## Description
-This project aims to create a fine-tuned LLM (Large Language Model) with specific knowledge about the Commodore 64, using the Mistral AI Ministral 3 Thinking 14B base model in bf16 format. The fine-tuning will be performed on a Corsair AI Workstation server with an AMD GPU and 96GB of VRAM.
+This project aims to create a fine-tuned LLM (Large Language Model) with specific knowledge about the Commodore 64, using the Ministral 3 8B Thinking base model in bf16/fp16 format. The fine-tuning will be performed on a Corsair AI Workstation server with an AMD GPU.
 
 ## System Requirements
 
 ### Hardware
-- **GPU**: AMD with ROCm 7.x support.
-- **VRAM**: 96GB minimum.
-- **Storage**: NVMe recommended for data and models.
+- **CPU**: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S Graphics (16 cores, 32 threads).
+- **GPU**: Radeon 8060S Graphics (RADV GFX1151).
+- **VRAM**: 74.32 GiB.
+- **RAM**: 30 GiB.
+- **Storage**: NVMe (3.7 TB total with LVM).
 
 ### Software
-- **Operating System**: Linux (Ubuntu 22.04 LTS recommended).
-- **Drivers**: ROCm 7.x.
+- **Operating System**: Fedora Linux 43 (Server Edition).
+- **Kernel**: 6.18.8-200.fc43.x86_64.
+- **Drivers**: ROCm 6.4.4 (required for GPU acceleration).
 - **Preinstalled Tools**:
   - `llama.cpp`
   - `ollama`
   - `gh` (GitHub CLI)
+  - `vulkan-tools`
+  - `mesa-demos`
 
 ## Project Structure
 
@@ -41,97 +46,99 @@ cd C64_AI_Companion
 
 ### 2. Set Up the Virtual Environment
 ```bash
-python -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 ```
 
 ### 3. Install Dependencies
 ```bash
-pip install torch transformers datasets peft accelerate flash-attn lm-eval
+pip install -r requirements.txt
+```
+
+### 4. Install ROCm 6.4.4 (Optional, if not already installed)
+```bash
+# Install ROCm 6.4.4 for GPU acceleration
+sudo dnf install rocm
+```
+
+### 5. Install PyTorch with ROCm 6.4 Support
+```bash
+# Install PyTorch with ROCm 6.4 support
+pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.4
+```
+
+### 6. Install OCR Tools (recommended for scanned manuals)
+```bash
+sudo dnf install ocrmypdf tesseract tesseract-langpack-eng poppler-utils
+sudo dnf install ghostscript unpaper
 ```
 
 ## Data Preparation
 
-### 1. Download Data
-Training data should be stored in the `data/` directory. Example structure:
+### 1. Put C64 docs in `c64_docs/`
+This repository already expects PDFs/HTML manuals under `c64_docs/`.
 
-```
-data/
-├── raw/          # Raw data
-├── processed/   # Processed data ready for training
-└── val/          # Validation data
+### 2. Run the end-to-end pipeline
+```bash
+python scripts/data_pipeline.py --stage all --allow-ocr
 ```
 
-### 2. Preprocessing
-Example script for preprocessing data:
+This generates:
+- `data/interim/manifest/manifest.parquet`
+- `data/interim/extracted/pages.parquet`
+- `data/interim/normalized/pages_normalized.parquet`
+- `data/interim/dedup/pages_dedup.parquet`
+- `data/processed/dapt/{train,validation,test}.parquet`
+- `data/processed/sft/{train,validation,test}.jsonl`
+- `data/processed/validation_report.json`
 
-```python
-from datasets import load_dataset
-
-# Load data
-dataset = load_dataset("csv", data_files={"train": "data/raw/train.csv", "val": "data/raw/val.csv"})
-
-# Tokenize data
-def tokenize_function(examples):
-    return tokenizer(examples["text"], padding="max_length", truncation=True)
-
-tokenized_datasets = dataset.map(tokenize_function, batched=True)
-
-# Save processed data
-tokenized_datasets.save_to_disk("data/processed")
+### 3. Generate QC markdown report
+```bash
+python scripts/data_qc_report.py \
+  --input data/processed/validation_report.json \
+  --output docs/data_qc_report.md
 ```
 
 ## Model Fine-Tuning
 
 ### 1. Download Base Model
 ```bash
-ollama pull mistral:14b
+# Download Ministral 3 8B Thinking and place it in:
+# models/Ministral-3-8B-Thinking
 ```
 
-### 2. Set Up Training Script
-Example training script (`scripts/train.py`):
+### 2. Run Training
+Use the unified script with mode selection:
 
-```python
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
-from datasets import load_from_disk
-
-# Load model and tokenizer
-model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-3-Thinking-14B", torch_dtype=torch.bfloat16)
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-3-Thinking-14B")
-
-# Load data
-train_dataset = load_from_disk("data/processed/train")
-val_dataset = load_from_disk("data/processed/val")
-
-# Set up training arguments
-training_args = TrainingArguments(
-    output_dir="./results",
-    per_device_train_batch_size=8,
-    learning_rate=2e-5,
-    num_train_epochs=3,
-    save_steps=10_000,
-    save_total_limit=2,
-    fp16=True,
-)
-
-# Initialize Trainer
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=val_dataset,
-)
-
-# Train model
-trainer.train()
-
-# Save model
-trainer.save_model("models/c64-finetuned")
-```
-
-### 3. Run Training
+### DAPT only
 ```bash
-python scripts/train.py
+python scripts/fine_tune_mistral_8b.py \
+  --mode dapt \
+  --model-path models/Ministral-3-8B-Thinking \
+  --dapt-dir data/processed/dapt \
+  --output-dir models/fine-tuned-dapt \
+  --use-lora
+```
+
+### SFT only
+```bash
+python scripts/fine_tune_mistral_8b.py \
+  --mode sft \
+  --model-path models/Ministral-3-8B-Thinking \
+  --sft-dir data/processed/sft \
+  --output-dir models/fine-tuned-sft \
+  --use-lora
+```
+
+### DAPT + SFT
+```bash
+python scripts/fine_tune_mistral_8b.py \
+  --mode both \
+  --model-path models/Ministral-3-8B-Thinking \
+  --dapt-dir data/processed/dapt \
+  --sft-dir data/processed/sft \
+  --output-dir models/fine-tuned \
+  --use-lora
 ```
 
 ## Model Evaluation
@@ -140,8 +147,8 @@ python scripts/train.py
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-model = AutoModelForCausalLM.from_pretrained("models/c64-finetuned")
-tokenizer = AutoTokenizer.from_pretrained("models/c64-finetuned")
+model = AutoModelForCausalLM.from_pretrained("models/fine-tuned")
+tokenizer = AutoTokenizer.from_pretrained("models/fine-tuned")
 ```
 
 ### 2. Evaluate with LM Evaluation Harness

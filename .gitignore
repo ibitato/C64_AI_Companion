@@ -6,6 +6,10 @@
 *.pt
 *.pth
 *.ckpt
+*.safetensors
+*.safetensors.index.json
+models/
+offload/
 
 # Datos sin procesar
 data/raw/*
@@ -46,4 +50,6 @@ poetry.lock
 docs/_build/
 
 # Archivos de datos procesados (opcional, dependiendo del tamaño)
-# data/processed/*
+data/processed/
+data/interim/
+*.arrow

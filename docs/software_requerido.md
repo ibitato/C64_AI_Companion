@@ -1,116 +1,65 @@
-# Required Software for Fine-Tuning with AMD ROCm 7.x
+# Software Requerido (ROCm 6.4.4 + Pipeline C64)
 
-## Introduction
-This document lists the necessary software for fine-tuning LLM models on AMD GPUs using ROCm 7.x, based on the research conducted.
+Este documento define el software mínimo para ejecutar el flujo completo del proyecto:
+- preparación de datos C64 (incluyendo OCR local),
+- fine-tuning con `Ministral-3-8B-Thinking`,
+- validación y reporte de calidad.
 
-## Tools and Libraries
+## 1. Sistema operativo y GPU
 
-### 1. AMD ROCm Tools
-- **ROCm Platform**: Software platform for GPU acceleration on AMD.
-  - Required version: 7.x
-  - [Official Documentation](https://rocm.docs.amd.com/)
+- Fedora Linux 43.
+- Kernel 6.18.x.
+- ROCm 6.4.4.
+- GPU AMD compatible con ROCm.
 
-- **GPU-accelerated libraries**: Libraries optimized for AMD GPUs.
+## 2. Paquetes del sistema (Fedora)
 
-### 2. Deep Learning Frameworks
-- **PyTorch**: Main framework for model training.
-  - Version with ROCm support.
-  - Installation:
-    ```bash
-    pip install torch --index-url https://download.pytorch.org/whl/rocm7.0
-    ```
-
-- **TensorFlow**: Alternative to PyTorch.
-  - Version with ROCm support.
-
-- **JAX**: Framework for numerical computation.
-  - Version with ROCm support.
-
-### 3. LLM Libraries
-- **Transformers**: Hugging Face library for LLM models.
-  - Installation:
-    ```bash
-    pip install transformers
-    ```
-
-- **Accelerate**: Library for distributing training.
-  - Installation:
-    ```bash
-    pip install accelerate
-    ```
-
-- **PEFT (Parameter-Efficient Fine-Tuning)**: To optimize VRAM usage.
-  - Installation:
-    ```bash
-    pip install peft
-    ```
-
-- **Datasets**: For handling training data.
-  - Installation:
-    ```bash
-    pip install datasets
-    ```
-
-- **Flash Attention**: Optimization for attention in large models.
-  - Installation:
-    ```bash
-    pip install flash-attn --no-build-isolation
-    ```
-
-### 4. Evaluation Tools
-- **LM Evaluation Harness**: To evaluate model performance.
-  - Installation:
-    ```bash
-    pip install lm-eval
-    ```
-
-### 5. Additional Tools
-- **llama.cpp**: For efficient inference.
-  - Installation:
-    ```bash
-    git clone https://github.com/ggerganov/llama.cpp
-    cd llama.cpp
-    make
-    ```
-
-- **ollama**: For model management.
-  - Installation:
-    ```bash
-    curl -fsSL https://ollama.com/install.sh | sh
-    ```
-
-## Environment Configuration
-
-### 1. Install ROCm 7.x
-Follow the official instructions to install ROCm on your system:
-- [ROCm Installation Guide](https://rocm.docs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
-
-### 2. Set Up Virtual Environment
+### 2.1 Base ML/GPU
 ```bash
-python -m venv venv
+sudo dnf install rocm
+```
+
+### 2.2 OCR para manuales escaneados
+```bash
+sudo dnf install ocrmypdf tesseract tesseract-langpack-eng ghostscript unpaper poppler-utils
+```
+
+## 3. Entorno Python (venv)
+
+```bash
+python3.10 -m venv venv
 source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### 3. Install Dependencies
+Notas:
+- `requirements.txt` ya está configurado para resolver desde PyPI y usar ruedas ROCm para PyTorch.
+- El comando anterior debe bastar sin pasos manuales extra de índices.
+
+## 4. Modelo base (ruta local obligatoria)
+
+Ruta válida del modelo:
+- `models/Ministral-3-8B-Thinking`
+
+Ejemplo de descarga:
 ```bash
-pip install torch transformers accelerate peft datasets flash-attn lm-eval
+hf download mistralai/Ministral-3-8B-Reasoning-2512 --local-dir ./models/Ministral-3-8B-Thinking
 ```
 
-## Additional Resources
-- [ROCm Documentation for Fine-Tuning](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/fine-tuning/index.html)
-- [Guide for Deploying LLM with AMD](https://gpuopen.com/learn/pytorch-windows-amd-llm-guide/)
-- [Hugging Face Transformers](https://huggingface.co/docs/transformers/index)
+## 5. Verificación rápida
 
-## Conclusion
-This document provides a complete list of the software needed to perform fine-tuning of LLM models on AMD GPUs with ROCm 7.x. Make sure to install and configure all the mentioned tools and libraries for an optimal workflow.
+```bash
+source venv/bin/activate
+python - <<'PY'
+import importlib
+for m in ["torch","transformers","datasets","peft","accelerate","lm_eval","pypdf","ocrmypdf"]:
+    importlib.import_module(m)
+print("OK")
+PY
+```
 
-## Development Tools
+## 6. Referencias
 
-The following tools were used in the development of this project:
-
-- **Mistral AI Vibe CLI**: A CLI agent used for project initialization, file creation, and management.
-- **Devstral 2 Model**: An LLM model used for generating documentation, code, and providing guidance throughout the project.
-
-### Author
-- **David R. Lopez B.**
-- Email: ibitato@gmail.com
+- ROCm: https://rocm.docs.amd.com/
+- Transformers: https://huggingface.co/docs/transformers/index
+- OCRmyPDF: https://ocrmypdf.readthedocs.io/
