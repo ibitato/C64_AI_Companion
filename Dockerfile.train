@@ -1,0 +1,27 @@
+FROM rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/workspace/.cache/huggingface \
+    TRANSFORMERS_CACHE=/workspace/.cache/huggingface/transformers \
+    TOKENIZERS_PARALLELISM=false
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    ocrmypdf \
+    tesseract-ocr \
+    ghostscript \
+    unpaper \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.base.txt requirements.rocm72.txt requirements.txt ./
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install -r requirements.txt
+
+RUN mkdir -p /workspace/.cache/huggingface
+
+CMD ["bash"]

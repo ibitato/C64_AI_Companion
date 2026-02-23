@@ -1,41 +1,6 @@
-# Reproducible Python 3.10 dependencies for C64_AI_Companion
-# Usage:
+# Reproducible dependencies for container-first training (ROCm 7.2)
+# Install inside container:
 #   pip install -r requirements.txt
-#
-# Notes:
-# - Primary index stays in PyPI so packages like lm-eval resolve correctly.
-# - ROCm index is added as extra for Torch ROCm wheels.
 
---index-url https://pypi.org/simple
---extra-index-url https://download.pytorch.org/whl/rocm6.4.4
-
-# Core runtime (ROCm + HF stack)
-torch==2.9.1+rocm6.4
-torchvision==0.24.1+rocm6.4
-transformers==5.2.0
-datasets==4.5.0
-peft==0.18.1
-accelerate==1.12.0
-lm-eval==0.4.11
-
-# Data pipeline
-pypdf==6.7.2
-beautifulsoup4==4.14.3
-pyarrow==23.0.1
-numpy==2.2.6
-pandas==2.3.3
-scikit-learn==1.7.2
-ocrmypdf==16.13.0
-tqdm==4.67.1
-
-# Optional analysis
-matplotlib==3.10.7
-seaborn==0.13.2
-
-# Developer tooling
-black==23.3.0
-flake8==6.0.0
-isort==5.12.0
-mypy==1.3.0
-pytest==9.0.2
-pytest-cov==7.0.0
+-r requirements.base.txt
+-r requirements.rocm72.txt

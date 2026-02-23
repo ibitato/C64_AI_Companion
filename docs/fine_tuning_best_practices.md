@@ -1,99 +1,85 @@
-# Fine-Tuning Best Practices (C64_AI_Companion)
+# Fine-Tuning Best Practices (Ministral-3-8B-Thinking + ROCm 7.2)
 
-Esta guía está alineada con la implementación actual del repositorio:
-- modelo objetivo: `Ministral-3-8B-Thinking`,
-- pipeline de datos: `scripts/data_pipeline.py`,
-- entrenamiento unificado: `scripts/fine_tune_mistral_8b.py`.
+Guía alineada con la implementación actual del repositorio.
 
-## 1. Estrategia recomendada
+## 1. Flujo recomendado
 
-Usar `DAPT + SFT`:
-- **DAPT** (Domain Adaptive Pre-Training): mejora conocimiento técnico C64 desde manuales.
-- **SFT** (Supervised Fine-Tuning): mejora formato conversacional y utilidad de respuesta.
-
-## 2. Preparación de datos (obligatoria)
-
-Ejecuta el pipeline completo:
+- Paso 1: construir contenedor.
+- Paso 2: preparar dataset C64.
+- Paso 3: entrenar en dos fases (`DAPT` + `SFT`) con LoRA.
 
 ```bash
-source venv/bin/activate
-python scripts/data_pipeline.py --stage all --allow-ocr
-python scripts/data_qc_report.py
+docker compose build trainer
+docker compose run --rm trainer bash scripts/container/pipeline.sh
+docker compose run --rm trainer bash scripts/container/train.sh
 ```
 
-Artefactos clave:
-- `data/processed/dapt/{train,validation,test}.parquet`
-- `data/processed/sft/{train,validation,test}.jsonl`
-- `data/processed/validation_report.json`
-- `docs/data_qc_report.md`
+## 2. Política de modelo
 
-## 3. Reglas de calidad de datos
+- Modelo original único permitido: `models/Ministral-3-8B-Thinking`.
+- No usar rutas fuera del proyecto para el modelo base.
+- El entrenamiento valida esta restricción y falla si no se cumple.
 
-- Mantener puntuación y mayúsculas (no degradar sintaxis técnica).
-- Hacer chunking por tokens para DAPT (no truncar documentos completos a 512).
-- Separar `train/validation/test` por documento para evitar leakage.
-- Usar OCR local si hay PDFs escaneados.
-
-## 4. Entrenamiento
-
-### 4.1 DAPT
-```bash
-python scripts/fine_tune_mistral_8b.py \
-  --mode dapt \
-  --model-path models/Ministral-3-8B-Thinking \
-  --dapt-dir data/processed/dapt \
-  --output-dir models/fine-tuned-dapt \
-  --use-lora
-```
-
-### 4.2 SFT
-```bash
-python scripts/fine_tune_mistral_8b.py \
-  --mode sft \
-  --model-path models/Ministral-3-8B-Thinking \
-  --sft-dir data/processed/sft \
-  --output-dir models/fine-tuned-sft \
-  --use-lora
-```
-
-### 4.3 DAPT + SFT
-```bash
-python scripts/fine_tune_mistral_8b.py \
-  --mode both \
-  --model-path models/Ministral-3-8B-Thinking \
-  --dapt-dir data/processed/dapt \
-  --sft-dir data/processed/sft \
-  --output-dir models/fine-tuned \
-  --use-lora
-```
-
-## 5. Parámetros iniciales recomendados
+## 3. Parámetros de arranque recomendados
 
 - `max_length`: 2048
 - `batch_size`: 2
 - `grad_accum`: 16
 - `learning_rate`: 2e-5
 - `epochs`: 3
+- `precision`: `bf16`
+- `use_lora`: activado
 
-Ajusta según memoria real y estabilidad de loss.
+## 4. Comandos de referencia
 
-## 6. Señales de alerta
+### DAPT
 
-- `coverage_ratio` bajo en `validation_report.json`:
-  indica OCR insuficiente o extracción pobre.
-- `validation` vacío:
-  revisar split y tamaño de corpus.
-- loss de validación no mejora:
-  bajar LR o reducir mezcla de datos ruidosos.
+```bash
+docker compose run --rm trainer bash scripts/container/train.sh \
+  --phase dapt \
+  --model-path models/Ministral-3-8B-Thinking \
+  --dapt-dir data/processed/dapt \
+  --output-dir models/fine-tuned-dapt \
+  --precision bf16 \
+  --use-lora
+```
 
-## 7. Compatibilidad con reasoning model
+### SFT
 
-- No generar CoT sintético artificial.
-- Mantener formato chat consistente con tokenizer/template del modelo.
-- Priorizar respuestas finales factuales y trazables a fuente.
+```bash
+docker compose run --rm trainer bash scripts/container/train.sh \
+  --phase sft \
+  --model-path models/Ministral-3-8B-Thinking \
+  --sft-dir data/processed/sft \
+  --output-dir models/fine-tuned-sft \
+  --precision bf16 \
+  --assistant-only-loss \
+  --packing \
+  --use-lora
+```
 
-## 8. Referencias
+### DAPT + SFT
 
-- Transformers language modeling: https://huggingface.co/docs/transformers/tasks/language_modeling
-- Transformers chat templating: https://huggingface.co/docs/transformers/chat_templating
-- TRL SFT: https://huggingface.co/docs/trl/sft_trainer
+```bash
+docker compose run --rm trainer bash scripts/container/train.sh \
+  --phase both \
+  --model-path models/Ministral-3-8B-Thinking \
+  --dapt-dir data/processed/dapt \
+  --sft-dir data/processed/sft \
+  --output-dir models/fine-tuned \
+  --precision bf16 \
+  --use-lora
+```
+
+## 5. Señales de alerta
+
+- `validation_report.json` con baja cobertura OCR.
+- `validation` vacío en DAPT/SFT.
+- divergencia de loss o nans: bajar LR, revisar chunks y calidad OCR.
+
+## 6. Verificación posterior
+
+```bash
+docker compose run --rm trainer pytest -q
+docker compose run --rm trainer bash scripts/container/gpu_smoke.sh
+```

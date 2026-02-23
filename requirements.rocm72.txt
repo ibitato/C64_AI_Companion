@@ -1,0 +1,9 @@
+# ROCm 7.2-compatible PyTorch stack.
+# Use AMD ROCm index as primary so torch packages resolve to ROCm builds.
+
+--index-url https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/
+--extra-index-url https://pypi.org/simple
+
+torch==2.9.1
+torchvision==0.24.0
+triton==3.5.1

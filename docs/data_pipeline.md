@@ -1,40 +1,37 @@
-# C64 Data Pipeline
+# C64 Data Pipeline (Container-first)
 
-This project uses `scripts/data_pipeline.py` to prepare Commodore 64 documents for training.
+El pipeline oficial se ejecuta dentro del contenedor ROCm 7.2.
 
-## Stages
+## Etapas
 
-- `manifest`: create document inventory with hashes and metadata.
-- `extract`: extract text from PDF/HTML, with optional OCR fallback for low-quality PDF pages.
-- `normalize`: conservative cleanup (keeps punctuation/case and technical symbols).
-- `dedup`: remove exact and near-duplicate pages.
-- `build_dapt`: build domain-adaptation dataset in token-sized chunks.
-- `build_sft`: build chat-format supervised dataset from extracted references.
-- `validate`: compute coverage/stats and write `data/processed/validation_report.json`.
-- `all`: run every stage in order.
+- `manifest`: inventario de documentos con hash y metadatos.
+- `extract`: extracción de texto PDF/HTML, con OCR opcional.
+- `normalize`: limpieza conservadora (sin perder sintaxis técnica).
+- `dedup`: deduplicación exacta y aproximada.
+- `build_dapt`: dataset DAPT en chunks por tokens.
+- `build_sft`: dataset conversacional SFT (`messages`).
+- `validate`: reporte de cobertura y consistencia.
+- `all`: ejecuta todo en orden.
 
-## Recommended run
+## Ejecución recomendada
 
 ```bash
-python scripts/data_pipeline.py --stage all --allow-ocr
-python scripts/data_qc_report.py
+docker compose run --rm trainer bash scripts/container/pipeline.sh
 ```
 
-## Key outputs
+## Salidas esperadas
 
 - `data/interim/manifest/manifest.parquet`
 - `data/interim/extracted/pages.parquet`
 - `data/interim/normalized/pages_normalized.parquet`
 - `data/interim/dedup/pages_dedup.parquet`
-- `data/processed/dapt/train.parquet`
-- `data/processed/dapt/validation.parquet`
-- `data/processed/dapt/test.parquet`
-- `data/processed/sft/train.jsonl`
-- `data/processed/sft/validation.jsonl`
-- `data/processed/sft/test.jsonl`
+- `data/processed/dapt/{train,validation,test}.parquet`
+- `data/processed/sft/{train,validation,test}.jsonl`
 - `data/processed/validation_report.json`
+- `docs/data_qc_report.md`
 
-## Notes
+## Notas operativas
 
-- Model path is project-local only: `models/Ministral-3-8B-Thinking`.
-- OCR requires local tools such as `ocrmypdf`, `tesseract`, `ghostscript`, and `unpaper`.
+- Ruta de modelo base obligatoria: `models/Ministral-3-8B-Thinking`.
+- Caché HF del proyecto: `.cache/huggingface/`.
+- Para habilitar OCR local, `pipeline.sh` ya ejecuta `--allow-ocr`.
