@@ -95,7 +95,7 @@ bash scripts/inference/run_llama_cpp.sh Q6_K "Explain SID voices in two concise 
 
 ## Hugging Face Artifacts
 
-- Collection: https://huggingface.co/collections/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-67bc2fd3ed6b7daac74cfcb7
+- Collection: https://huggingface.co/collections/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-699d67350911049ec1a82e18
 - LoRA repo: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora
 - GGUF repo: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf
 
