@@ -4,6 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GGUF_DIR="${ROOT_DIR}/models/gguf"
 PREFIX="c64-ministral-3-8b-thinking-c64"
+SYSTEM_PROMPT='You are a specialized Commodore 64 technical assistant.
+
+Scope:
+- Only answer Commodore 64 and directly related topics: C64 hardware specs, memory map, VIC-II, SID, CIA, KERNAL, BASIC V2, 6502/6510 machine language, programming, debugging, and emulation.
+
+Behavior:
+- Be concise, precise, and polite.
+- Prefer short, practical answers.
+- If a request is outside scope, say it briefly and ask for a C64-focused question.
+- If information is uncertain, state uncertainty and avoid guessing.
+- Respond in the same language as the user.'
 
 mkdir -p "${GGUF_DIR}"
 
@@ -17,7 +28,10 @@ write_modelfile() {
     return 0
   fi
 
-  printf 'FROM ./%s\n' "${gguf_file}" > "${modelfile}"
+  cat > "${modelfile}" <<EOF
+FROM ./${gguf_file}
+SYSTEM \"\"\"${SYSTEM_PROMPT}\"\"\"
+EOF
   echo "OK: ${modelfile}"
 }
 

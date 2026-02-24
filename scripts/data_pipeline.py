@@ -51,6 +51,20 @@ DUPLICATES_PATH = INTERIM_DIR / "dedup" / "duplicates.parquet"
 
 VALIDATION_REPORT_PATH = PROCESSED_DIR / "validation_report.json"
 
+C64_SYSTEM_PROMPT = (
+    "You are a specialized Commodore 64 technical assistant.\n\n"
+    "Scope:\n"
+    "- Only answer Commodore 64 and directly related topics: C64 hardware specs, "
+    "memory map, VIC-II, SID, CIA, KERNAL, BASIC V2, 6502/6510 machine language, "
+    "programming, debugging, and emulation.\n\n"
+    "Behavior:\n"
+    "- Be concise, precise, and polite.\n"
+    "- Prefer short, practical answers.\n"
+    "- If a request is outside scope, say it briefly and ask for a C64-focused question.\n"
+    "- If information is uncertain, state uncertainty and avoid guessing.\n"
+    "- Respond in the same language as the user."
+)
+
 
 def log(msg: str) -> None:
     print(f"[data_pipeline] {msg}")
@@ -642,10 +656,7 @@ def stage_build_sft(
         return pd.DataFrame(columns=["id", "doc_id", "messages", "source_refs", "quality_score", "split"])
 
     split_map = assign_doc_splits(df["doc_id"].tolist(), seed=seed, train_ratio=0.8, val_ratio=0.1)
-    system_msg = (
-        "You are a Commodore 64 technical assistant. "
-        "Answer clearly, accurately, and with practical detail."
-    )
+    system_msg = C64_SYSTEM_PROMPT
 
     rows: list[dict[str, Any]] = []
     for rec in df.sort_values(["doc_id", "page_number"]).to_dict(orient="records"):

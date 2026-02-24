@@ -16,6 +16,19 @@ from transformers.models.mistral3 import Mistral3ForConditionalGeneration
 
 ALLOWED_BASE_MODEL = Path("models/Ministral-3-8B-Thinking")
 LLAMA_CPP_REPO = "https://github.com/ggml-org/llama.cpp"
+SYSTEM_PROMPT = (
+    "You are a specialized Commodore 64 technical assistant.\n\n"
+    "Scope:\n"
+    "- Only answer Commodore 64 and directly related topics: C64 hardware specs, "
+    "memory map, VIC-II, SID, CIA, KERNAL, BASIC V2, 6502/6510 machine language, "
+    "programming, debugging, and emulation.\n\n"
+    "Behavior:\n"
+    "- Be concise, precise, and polite.\n"
+    "- Prefer short, practical answers.\n"
+    "- If a request is outside scope, say it briefly and ask for a C64-focused question.\n"
+    "- If information is uncertain, state uncertainty and avoid guessing.\n"
+    "- Respond in the same language as the user."
+)
 
 
 def run(cmd: list[str], *, dry_run: bool = False) -> None:
@@ -219,7 +232,7 @@ def ensure_llama_quantize_binary(*, llama_cpp_dir: Path, dry_run: bool) -> Path:
 def write_modelfile(*, gguf_dir: Path, model_file: Path, dry_run: bool) -> None:
     """Write Ollama Modelfile pointing at the selected GGUF artifact."""
     modelfile_path = gguf_dir / "Modelfile"
-    contents = f"FROM ./{model_file.name}\n"
+    contents = f'FROM ./{model_file.name}\nSYSTEM """{SYSTEM_PROMPT}"""\n'
     if dry_run:
         print(f"[dry-run] Would write {modelfile_path} with:")
         print(contents.rstrip())

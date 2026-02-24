@@ -26,6 +26,8 @@ bash scripts/inference/quantize_additional_gguf.sh
 bash scripts/inference/prepare_runtime_assets.sh
 ```
 
+`prepare_runtime_assets.sh` writes `Modelfile*` files with a C64-specialist `SYSTEM` prompt so Ollama runs keep the same scope/behavior constraints used during training data construction.
+
 ## Register Models in Ollama
 
 ```bash

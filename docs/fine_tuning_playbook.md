@@ -15,6 +15,16 @@ Fine-tune a reasoning-capable Ministral 3 8B base model on technical C64 data us
 - Learning rate: `2e-5`
 - Epochs: `3`
 
+## System Prompt Used in SFT Data
+
+The SFT generator now injects a constrained C64-specialist system prompt that:
+
+- restricts scope to Commodore 64 and directly related topics,
+- enforces concise and polite answers,
+- requests explicit uncertainty when needed,
+- asks for C64-focused reformulation when a request is out of scope,
+- keeps responses in the user's language.
+
 ## Commands
 
 ### DAPT only
