@@ -8,6 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /workspace
 
+# Keep runtime dependencies explicit inside the training container baseline.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     cmake \

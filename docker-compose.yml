@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile.train
     image: c64-ai-companion:rocm72
     working_dir: /workspace
+    # Map container user to host UID/GID to avoid root-owned artifacts in repo mounts.
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     command: bash
     stdin_open: true
@@ -15,6 +16,7 @@ services:
       - SYS_PTRACE
     security_opt:
       - seccomp=unconfined
+    # Required AMD device mappings for ROCm workloads.
     devices:
       - /dev/kfd
       - /dev/dri

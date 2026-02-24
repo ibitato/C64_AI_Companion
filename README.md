@@ -1,99 +1,69 @@
-# C64_AI_Companion
+# C64 AI Companion
 
-Fine-tuning de `Ministral-3-8B-Thinking` para conocimiento técnico de Commodore 64.
+C64 AI Companion is a reproducible fine-tuning project that adapts a reasoning-capable Ministral 3 8B model to technical Commodore 64 knowledge.
 
-## Estrategia vigente
+## Project Objective
 
-El proyecto opera en modo **container-first** para entrenamiento:
-- host: Fedora 43 (solo runtime de contenedor + acceso a GPU AMD),
-- contenedor: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`,
-- modelo base obligatorio: `models/Ministral-3-8B-Thinking`.
+The objective is to keep strong reasoning behavior while adding accurate, practical C64 technical knowledge for topics such as BASIC, KERNAL, memory map, VIC-II, SID, and 6502/6510 workflows.
 
-## Estructura principal
+## What This Project Is and Is Not
 
-```text
-C64_AI_Companion/
-├── c64_docs/                     # Manuales/documentación C64 de entrada
-├── data/
-├── docs/
-├── models/                       # Modelo base + salidas fine-tuned
-├── scripts/
-│   ├── data_pipeline.py
-│   ├── export_gguf.py
-│   ├── fine_tune_mistral_8b.py
-│   └── container/
-│       ├── export_gguf.sh
-│       ├── gpu_smoke.sh
-│       ├── pipeline.sh
-│       └── train.sh
-├── Dockerfile.train
-├── docker-compose.yml
-└── requirements*.txt
+- It is a container-first training and packaging workflow for one controlled base model.
+- It is a reproducible engineering pipeline for dataset preparation, DAPT/SFT fine-tuning, and GGUF export.
+- It is not a generic multi-model framework.
+- It does not use user-global model caches as authoritative model paths.
+
+## Architecture and Reproducibility
+
+- Training and packaging run in Docker.
+- Canonical training image: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`.
+- Canonical base model path: `models/Ministral-3-8B-Thinking`.
+- Project-local cache: `.cache/huggingface`.
+
+### Strix Halo Runtime Note
+
+This project intentionally documents a split between host runtime details and container runtime details.
+
+- Host runtime is infrastructure context.
+- Container runtime is the training source of truth for reproducibility.
+- For this workstation profile, container ROCm/HIP 7.x userland is the supported training runtime for Strix Halo compatibility.
+
+See `docs/workstation_profile.md` for the host/container compatibility matrix.
+
+## Quickstart
+
+1. Export your host user IDs for container file ownership:
+
+```bash
+export LOCAL_UID=$(id -u)
+export LOCAL_GID=$(id -g)
 ```
 
-## Requisitos del host
-
-- Docker Engine + Docker Compose plugin.
-- GPU AMD con `/dev/kfd` y `/dev/dri` accesibles.
-- Usuario en grupos `video` y `render`.
-- Exportar UID/GID antes de usar `docker compose` en este repo:
-  ```bash
-  export LOCAL_UID=$(id -u)
-  export LOCAL_GID=$(id -g)
-  ```
-
-## Flujo rápido
-
-### 1) Build de imagen
+2. Build image:
 
 ```bash
 docker compose build trainer
 ```
 
-### 2) Smoke test de GPU en contenedor
+3. Run GPU smoke test:
 
 ```bash
 docker compose run --rm trainer bash scripts/container/gpu_smoke.sh
 ```
 
-### 3) Preparar dataset C64
+4. Build datasets:
 
 ```bash
 docker compose run --rm trainer bash scripts/container/pipeline.sh
 ```
 
-Genera:
-- `data/processed/dapt/{train,validation,test}.parquet`
-- `data/processed/sft/{train,validation,test}.jsonl`
-- `data/processed/validation_report.json`
-- `docs/data_qc_report.md`
-
-### 4) Entrenamiento
-
-Entrenamiento completo (DAPT + SFT):
+5. Train (DAPT + SFT):
 
 ```bash
 docker compose run --rm trainer bash scripts/container/train.sh
 ```
 
-Ejemplo DAPT corto:
-
-```bash
-docker compose run --rm trainer bash scripts/container/train.sh \
-  --phase dapt \
-  --model-path models/Ministral-3-8B-Thinking \
-  --dapt-dir data/processed/dapt \
-  --output-dir models/fine-tuned-dapt \
-  --precision bf16 \
-  --use-lora \
-  --max-steps 20
-```
-
-Nota SFT:
-- con el chat template actual de `Ministral-3-8B-Thinking`, el proyecto usa por defecto
-  `assistant_only_loss=False` y `packing=False` para evitar incompatibilidades de máscara.
-
-### 5) Exportar a GGUF (Ollama / llama.cpp)
+6. Export GGUF:
 
 ```bash
 docker compose run --rm trainer bash scripts/container/export_gguf.sh \
@@ -103,57 +73,64 @@ docker compose run --rm trainer bash scripts/container/export_gguf.sh \
   --quantization Q4_K_M
 ```
 
-Salidas:
-- `models/gguf/c64-ministral-3-8b-thinking-c64-F16.gguf`
-- `models/gguf/c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf`
-- `models/gguf/Modelfile`
-
-Generar cuantizaciones adicionales (`Q6_K` y `Q8_0`) desde `F16`:
+7. Optional extra quantizations (`Q6_K`, `Q8_0`):
 
 ```bash
 bash scripts/inference/quantize_additional_gguf.sh
 ```
 
-Preparar todos los `Modelfile` locales (`Q4`, `Q6`, `Q8`, `F16`):
+## Inference Runtimes
 
-```bash
-bash scripts/inference/prepare_runtime_assets.sh
-```
-
-Uso en Ollama (registra Q4/Q6/Q8):
+- Ollama helper:
 
 ```bash
 bash scripts/inference/create_ollama_models.sh
 ```
 
-Uso en llama.cpp (elige `Q4_K_M`, `Q6_K`, `Q8_0` o `F16`):
+- llama.cpp helper:
 
 ```bash
-bash scripts/inference/run_llama_cpp.sh Q6_K "Explica el SID del Commodore 64 en 2 frases."
+bash scripts/inference/run_llama_cpp.sh Q6_K "Explain SID voices in two concise points."
 ```
 
-## Tests
+## Hugging Face Artifacts
 
-```bash
-docker compose run --rm trainer pytest -q
+- Collection: https://huggingface.co/collections/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-67bc2fd3ed6b7daac74cfcb7
+- LoRA repo: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora
+- GGUF repo: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf
+
+## Repository Structure
+
+```text
+C64_AI_Companion/
+|-- c64_docs/                    # Source C64 manuals used for dataset generation
+|-- data/                        # Interim and processed datasets
+|-- docs/                        # Project documentation and operational manuals
+|-- models/                      # Base model, fine-tuned outputs, GGUF exports
+|-- scripts/                     # Data pipeline, training, export, runtime automation
+|-- tests/                       # GPU and data-pipeline validation tests
+|-- Dockerfile.train
+|-- docker-compose.yml
+`-- requirements*.txt
 ```
 
-Para forzar fallo si no hay GPU ROCm disponible:
+## Documentation Index
 
-```bash
-docker compose run --rm -e C64_REQUIRE_GPU=1 trainer pytest -q tests/test_gpu.py
-```
+Start at `docs/index.md`.
 
-## Política de modelo base
+## Security and Model Policy
 
-- Única ruta válida para el modelo original: `models/Ministral-3-8B-Thinking`.
-- No se usa cache global de usuario como directorio de trabajo de modelo.
-- El script de entrenamiento valida esta política en runtime.
+- Base model path is restricted by policy to `models/Ministral-3-8B-Thinking`.
+- Sensitive tokens must be stored in local `.env` only.
+- Large artifacts and caches remain excluded by `.gitignore`.
 
-## Documentación relacionada
+## AI Co-Authors
 
-- `AGENTS.md`
-- `docs/container_training.md`
-- `docs/software_requerido.md`
-- `docs/fine_tuning_best_practices.md`
-- `docs/data_pipeline.md`
+This project includes AI-assisted engineering contributions from:
+
+- Mistral AI Devstral 2
+- Mistral AI Vibe CLI
+- Codex 5.3
+- Codex CLI
+
+See `CREDITS.md` for contribution scope and responsibility boundaries.

@@ -19,6 +19,7 @@ LLAMA_CPP_REPO = "https://github.com/ggml-org/llama.cpp"
 
 
 def run(cmd: list[str], *, dry_run: bool = False) -> None:
+    """Run a shell command and fail fast on non-zero exit status."""
     cmd_str = " ".join(cmd)
     print(f"$ {cmd_str}")
     if dry_run:
@@ -54,6 +55,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_allowed_base_model(path_str: str) -> Path:
+    """Enforce repository policy for the canonical base model location."""
     workspace = Path.cwd().resolve()
     allowed = (workspace / ALLOWED_BASE_MODEL).resolve()
     candidate = Path(path_str).expanduser()
@@ -71,6 +73,7 @@ def resolve_allowed_base_model(path_str: str) -> Path:
 
 
 def resolve_dtype(dtype_arg: str, device: str) -> tuple[torch.dtype, str]:
+    """Resolve export dtype from CLI input and active device."""
     if dtype_arg == "float16":
         return torch.float16, "float16"
     if dtype_arg == "bfloat16":
@@ -86,6 +89,7 @@ def resolve_dtype(dtype_arg: str, device: str) -> tuple[torch.dtype, str]:
 
 
 def resolve_device(device_arg: str) -> str:
+    """Resolve runtime device; 'auto' prefers CUDA/ROCm when available."""
     if device_arg == "auto":
         return "cuda" if torch.cuda.is_available() else "cpu"
     return device_arg
@@ -102,6 +106,7 @@ def merge_lora_adapter(
     max_shard_size: str,
     dry_run: bool,
 ) -> None:
+    """Merge LoRA adapter into base model and persist merged HF checkpoint."""
     if dry_run:
         print(
             f"[dry-run] Would merge adapter '{adapter_path}' into '{base_model_path}' "
@@ -153,6 +158,7 @@ def ensure_llama_cpp(
     update_repo: bool,
     dry_run: bool,
 ) -> None:
+    """Clone or update llama.cpp repository used for GGUF conversion."""
     git_dir = llama_cpp_dir / ".git"
     if not git_dir.exists():
         llama_cpp_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -180,6 +186,7 @@ def ensure_llama_cpp(
 
 
 def ensure_llama_quantize_binary(*, llama_cpp_dir: Path, dry_run: bool) -> Path:
+    """Build llama.cpp quantizer if not already available."""
     quantize_bin = llama_cpp_dir / "build" / "bin" / "llama-quantize"
     if quantize_bin.exists():
         return quantize_bin
@@ -210,6 +217,7 @@ def ensure_llama_quantize_binary(*, llama_cpp_dir: Path, dry_run: bool) -> Path:
 
 
 def write_modelfile(*, gguf_dir: Path, model_file: Path, dry_run: bool) -> None:
+    """Write Ollama Modelfile pointing at the selected GGUF artifact."""
     modelfile_path = gguf_dir / "Modelfile"
     contents = f"FROM ./{model_file.name}\n"
     if dry_run:
@@ -222,6 +230,7 @@ def write_modelfile(*, gguf_dir: Path, model_file: Path, dry_run: bool) -> None:
 
 
 def ensure_sentencepiece_available(*, dry_run: bool) -> None:
+    """Fail early if required tokenizer dependency is missing."""
     if dry_run:
         return
     try:
@@ -234,6 +243,7 @@ def ensure_sentencepiece_available(*, dry_run: bool) -> None:
 
 
 def main() -> None:
+    """End-to-end GGUF export orchestration."""
     args = parse_args()
 
     base_model_path = resolve_allowed_base_model(args.base_model_path)

@@ -174,6 +174,7 @@ def extract_pdf_with_ocr_fallback(
     ocr_language: str = "eng",
     allow_ocr: bool = True,
 ) -> list[dict[str, Any]]:
+    """Extract PDF text and selectively replace low-quality pages with OCR output."""
     pages = extract_pdf_digital(pdf_path)
     low_quality = [p for p in pages if p["quality_score"] < ocr_threshold]
     if not low_quality or not allow_ocr:
@@ -227,6 +228,7 @@ def _header_footer_candidates(lines: list[str]) -> list[str]:
 
 
 def remove_repeated_headers_footers(doc_df: pd.DataFrame) -> pd.DataFrame:
+    """Remove recurrent page headers/footers within one document group."""
     if doc_df.empty:
         return doc_df
 
@@ -300,6 +302,7 @@ def stage_extract(
     ocr_threshold: float,
     ocr_language: str,
 ) -> pd.DataFrame:
+    """Extract text pages from source files declared in the manifest."""
     manifest = pd.read_parquet(manifest_path)
     rows: list[dict[str, Any]] = []
 
@@ -360,6 +363,7 @@ def stage_extract(
 
 
 def stage_normalize(extracted_path: Path, normalized_path: Path, min_chars: int) -> pd.DataFrame:
+    """Normalize extracted text and flag rows that are usable for training."""
     df = pd.read_parquet(extracted_path)
     if df.empty:
         ensure_parent(normalized_path)
@@ -397,6 +401,7 @@ def stage_dedup(
     duplicates_path: Path,
     near_dup_threshold: float = 0.985,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Run exact and near-duplicate removal while keeping the best-quality page variant."""
     df = pd.read_parquet(normalized_path)
     if df.empty:
         ensure_parent(dedup_path)
@@ -414,7 +419,7 @@ def stage_dedup(
     keep_idx = work.sort_values("quality_rank", ascending=False).drop_duplicates("exact_hash").index
     exact_kept = work.loc[keep_idx].copy()
 
-    # Near dedup: compare only with small candidate sets (length bucket + prefix).
+    # Near-dedup compares only within small candidate buckets to keep runtime bounded.
     near_sorted = exact_kept.sort_values(["quality_rank"], ascending=False)
     kept_rows: list[pd.Series] = []
     duplicates: list[dict[str, Any]] = []
@@ -464,6 +469,7 @@ def stage_dedup(
 
 
 def assign_doc_splits(doc_ids: list[str], seed: int, train_ratio: float, val_ratio: float) -> dict[str, str]:
+    """Assign stable document-level train/validation/test splits."""
     doc_ids = sorted(set(doc_ids))
     rng = random.Random(seed)
     rng.shuffle(doc_ids)
@@ -504,6 +510,7 @@ def token_chunks(
     stride: int,
     min_chunk_tokens: int,
 ) -> list[list[int]]:
+    """Create overlapping token windows for DAPT training."""
     if block_size <= 0:
         raise ValueError("block_size must be > 0")
     step = block_size - stride
@@ -530,6 +537,7 @@ def stage_build_dapt(
     min_chunk_tokens: int,
     seed: int,
 ) -> pd.DataFrame:
+    """Build DAPT chunks and save split parquet files."""
     df = pd.read_parquet(dedup_path)
     if df.empty:
         dapt_dir.mkdir(parents=True, exist_ok=True)
@@ -594,6 +602,7 @@ def stage_build_dapt(
 
 
 def split_sentences(text: str) -> list[str]:
+    """Split text into coarse sentences for lightweight extractive summaries."""
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         return []
@@ -602,6 +611,7 @@ def split_sentences(text: str) -> list[str]:
 
 
 def extractive_summary(text: str, max_sentences: int = 4, max_chars: int = 900) -> str:
+    """Produce a compact bullet summary directly from excerpt sentences."""
     sentences = split_sentences(text)
     selected: list[str] = []
     running = 0
@@ -623,6 +633,7 @@ def stage_build_sft(
     seed: int,
     max_examples_per_page: int = 2,
 ) -> pd.DataFrame:
+    """Build SFT JSONL examples from deduplicated normalized pages."""
     df = pd.read_parquet(dedup_path)
     if df.empty:
         sft_dir.mkdir(parents=True, exist_ok=True)
@@ -731,6 +742,7 @@ def stage_validate(
     sft_dir: Path,
     report_path: Path,
 ) -> dict[str, Any]:
+    """Generate dataset quality checks and a machine-readable validation report."""
     report: dict[str, Any] = {
         "ok": True,
         "checks": {},
@@ -814,6 +826,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def run(args: argparse.Namespace) -> None:
+    """Dispatch a single pipeline stage or the complete pipeline."""
     if args.stage in ("manifest", "all"):
         build_manifest(args.source_dir, MANIFEST_PATH)
 

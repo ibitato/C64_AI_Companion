@@ -1,30 +1,27 @@
-# Best Practices for Using AI Agents in C64_AI_Companion
+# AI Agent Operating Guidelines for C64 AI Companion
 
-## Objetivo
-Este proyecto se centra en fine-tuning de `Ministral-3-8B-Thinking` para conocimiento de Commodore 64 con un flujo reproducible, trazable y mantenible.
+## Purpose
 
-## 1. Política obligatoria de modelos (hard requirement)
+These guidelines define how AI agents should operate in this repository to keep outputs reproducible, auditable, and technically correct.
 
-- El único directorio válido para **modelos originales/base** es `./models/`.
-- La única ruta base permitida en este proyecto es:
-  - `./models/Ministral-3-8B-Thinking`
-- Está prohibido operar con rutas de modelo base fuera del repo (por ejemplo, `~/.cache/huggingface/...`) como ruta de trabajo de entrenamiento.
-- Las salidas de fine-tuning también deben quedar bajo `./models/`.
+## 1. Core Model Policy (Hard Requirement)
 
-## 2. Estrategia de entorno
+- The only valid base model path is `models/Ministral-3-8B-Thinking`.
+- Do not use user-global model cache paths as training base paths.
+- Fine-tuned outputs must remain under `models/`.
 
-- El entrenamiento y pipeline se ejecutan en contenedor.
-- Runtime estándar: `Docker`.
-- Imagen estándar: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`.
-- El host debe exponer `/dev/kfd` y `/dev/dri` al contenedor.
+## 2. Runtime Strategy
 
-## 3. Política de caché
+- This project is container-first for training and packaging.
+- Standard runtime image: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`.
+- Host exposes `/dev/kfd` and `/dev/dri`; container runtime is the reproducible baseline.
 
-- Cache de Hugging Face por proyecto:
-  - `.cache/huggingface/` (ignorada por git).
-- No usar cache global de usuario como dependencia operativa del proyecto.
+## 3. Cache Policy
 
-## 4. Flujo oficial
+- Use project-local Hugging Face cache: `.cache/huggingface/`.
+- Avoid hidden dependencies on user-global cache state.
+
+## 4. Official Workflow
 
 1. `docker compose build trainer`
 2. `docker compose run --rm trainer bash scripts/container/gpu_smoke.sh`
@@ -32,38 +29,33 @@ Este proyecto se centra en fine-tuning de `Ministral-3-8B-Thinking` para conocim
 4. `docker compose run --rm trainer bash scripts/container/train.sh`
 5. `docker compose run --rm trainer pytest -q`
 
-## 5. Preparación de datos C64
+## 5. Documentation Policy
 
-- Fuente: documentos en `c64_docs/`.
-- Pipeline: `scripts/data_pipeline.py`.
-- Salidas obligatorias:
-  - `data/processed/dapt/*.parquet`
-  - `data/processed/sft/*.jsonl`
-  - `data/processed/validation_report.json`
+- All maintained documentation must be English.
+- Update docs in the same change set as behavior changes.
+- Keep docs aligned with actual scripts and commands in this repo.
 
-## 6. Entrenamiento
+## 6. Security and Hygiene
 
-- Script oficial: `scripts/fine_tune_mistral_8b.py`.
-- Fases soportadas: `dapt`, `sft`, `both`.
-- Recomendación inicial: LoRA + `bf16`.
+- Never commit secrets.
+- Keep `.env` local and ignored.
+- Do not commit heavy artifacts, model weights, or local caches.
+- Keep `.gitignore` aligned with real repository behavior.
 
-## 7. Versionado y reproducibilidad
+## 7. Reproducibility
 
-- Dependencias separadas en:
+- Dependencies are defined in:
   - `requirements.base.txt`
   - `requirements.rocm72.txt`
-  - `requirements.txt` (agregador)
-- Commits atómicos y descriptivos.
-- Documentación actualizada en el mismo cambio cuando se altera el flujo.
+  - `requirements.txt`
+- Prefer deterministic, scripted steps over manual, ad hoc operations.
 
-## 8. Seguridad y limpieza
-
-- No commitear pesos de modelos, datos intermedios pesados ni caches.
-- Limpiar artefactos temporales de instalaciones fallidas.
-- Mantener `.gitignore` alineado con el flujo real del repositorio.
-
-## 9. Referencias
+## 8. References
 
 - ROCm docs: https://rocm.docs.amd.com/
-- PyTorch ROCm containers: https://hub.docker.com/r/rocm/pytorch/tags
-- Transformers: https://huggingface.co/docs/transformers/index
+- Transformers docs: https://huggingface.co/docs/transformers/index
+- llama.cpp: https://github.com/ggml-org/llama.cpp
+
+## 9. Attribution Context
+
+AI-assisted work is acknowledged in `CREDITS.md`.

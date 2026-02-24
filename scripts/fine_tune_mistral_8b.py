@@ -78,11 +78,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def normalize_phase(args: argparse.Namespace) -> None:
+    """Apply backward-compatible phase aliases."""
     if args.mode is not None:
         args.phase = args.mode
 
 
 def enforce_model_policy(model_path: str) -> Path:
+    """Enforce the project policy for the canonical base model path."""
     resolved = Path(model_path).resolve()
     if resolved != CANONICAL_MODEL_PATH:
         raise ValueError(
@@ -95,6 +97,7 @@ def enforce_model_policy(model_path: str) -> Path:
 
 
 def setup_device() -> tuple[str, bool]:
+    """Detect accelerator availability and bf16 support."""
     if torch.cuda.is_available():
         device_count = torch.cuda.device_count()
         print(f"CUDA/ROCm available: {device_count} device(s)")
@@ -109,6 +112,7 @@ def setup_device() -> tuple[str, bool]:
 
 
 def resolve_dtype(precision: str, device: str, bf16_supported: bool) -> tuple[torch.dtype, bool, bool]:
+    """Resolve final tensor dtype and Trainer precision flags."""
     if device != "cuda":
         return torch.float32, False, False
 
@@ -128,6 +132,7 @@ def resolve_dtype(precision: str, device: str, bf16_supported: bool) -> tuple[to
 
 
 def load_base_model_and_tokenizer(model_path: str, device: str, dtype: torch.dtype):
+    """Load model/tokenizer and normalize pad token behavior."""
     config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
     if hasattr(config, "tie_word_embeddings"):
         config.tie_word_embeddings = False
@@ -148,6 +153,7 @@ def load_base_model_and_tokenizer(model_path: str, device: str, dtype: torch.dty
 
 
 def _data_files(base_dir: str, extension: str) -> dict[str, str]:
+    """Collect split files for a given dataset extension."""
     base = Path(base_dir)
     mapping: dict[str, str] = {}
     for split in ("train", "validation", "test"):
@@ -158,6 +164,7 @@ def _data_files(base_dir: str, extension: str) -> dict[str, str]:
 
 
 def ensure_validation_split(ds: DatasetDict, seed: int) -> DatasetDict:
+    """Guarantee a non-empty validation split for trainer compatibility."""
     if "validation" in ds and len(ds["validation"]) > 0:
         return ds
     split = ds["train"].train_test_split(test_size=0.05, seed=seed)
@@ -168,6 +175,7 @@ def ensure_validation_split(ds: DatasetDict, seed: int) -> DatasetDict:
 
 
 def load_dapt_dataset(dapt_dir: str, seed: int) -> DatasetDict:
+    """Load DAPT parquet splits and validate expected schema."""
     data_files = _data_files(dapt_dir, "parquet")
     if not data_files:
         raise FileNotFoundError(f"No DAPT parquet files found in {dapt_dir}")
@@ -181,6 +189,7 @@ def load_dapt_dataset(dapt_dir: str, seed: int) -> DatasetDict:
 
 
 def load_sft_dataset(sft_dir: str, seed: int) -> DatasetDict:
+    """Load SFT JSONL splits and validate expected schema."""
     data_files = _data_files(sft_dir, "jsonl")
     if not data_files:
         raise FileNotFoundError(f"No SFT jsonl files found in {sft_dir}")
@@ -194,6 +203,7 @@ def load_sft_dataset(sft_dir: str, seed: int) -> DatasetDict:
 
 
 def tokenize_dapt_dataset(ds: DatasetDict, tokenizer: AutoTokenizer, max_length: int) -> DatasetDict:
+    """Tokenize DAPT text while leaving dynamic padding to the collator."""
     def tok(batch):
         # Leave labels to the data collator so variable-length batches are padded safely.
         return tokenizer(batch["text"], truncation=True, max_length=max_length, padding=False)
@@ -205,10 +215,12 @@ def tokenize_dapt_dataset(ds: DatasetDict, tokenizer: AutoTokenizer, max_length:
 
 
 def _is_language_module(name: str) -> bool:
+    """Return True for language-model module prefixes (exclude vision tower)."""
     return name.startswith("model.language_model.") or name.startswith("language_model.")
 
 
 def find_lora_targets(model: torch.nn.Module, scope: str) -> list[str]:
+    """Resolve LoRA target modules based on configured scope."""
     targets: list[str] = []
 
     if scope == "language_qkvo":
@@ -230,6 +242,7 @@ def find_lora_targets(model: torch.nn.Module, scope: str) -> list[str]:
 
 
 def apply_lora(model: torch.nn.Module, args: argparse.Namespace) -> torch.nn.Module:
+    """Attach a fresh LoRA adapter to the loaded base model."""
     targets = find_lora_targets(model, args.lora_scope)
     print(f"LoRA target modules ({args.lora_scope}): {len(targets)}")
     print("Sample targets:", targets[:8])
@@ -248,6 +261,7 @@ def apply_lora(model: torch.nn.Module, args: argparse.Namespace) -> torch.nn.Mod
 
 
 def maybe_attach_adapter(model: torch.nn.Module, adapter_path: str | None) -> torch.nn.Module:
+    """Attach an existing adapter if present (used in DAPT->SFT chaining)."""
     if not adapter_path:
         return model
     adapter_file = Path(adapter_path) / "adapter_config.json"
@@ -265,6 +279,7 @@ def build_training_args(
     use_bf16: bool,
     use_fp16: bool,
 ) -> TrainingArguments:
+    """Build common Trainer arguments for the DAPT phase."""
     effective_eval = args.eval_strategy if has_eval else "no"
     load_best = effective_eval != "no" and has_eval
 
@@ -301,6 +316,7 @@ def build_sft_args(
     use_bf16: bool,
     use_fp16: bool,
 ) -> SFTConfig:
+    """Build TRL SFTConfig arguments with the same optimization profile as DAPT."""
     effective_eval = args.eval_strategy if has_eval else "no"
     load_best = effective_eval != "no" and has_eval
 
@@ -342,6 +358,7 @@ def run_dapt_phase(
     use_bf16: bool,
     use_fp16: bool,
 ) -> tuple[str, str | None]:
+    """Execute DAPT and return model path and optional adapter path for next phase."""
     print("=== DAPT phase ===")
     model, tokenizer = load_base_model_and_tokenizer(model_path, device=device, dtype=dtype)
 
@@ -383,6 +400,7 @@ def run_sft_phase(
     use_fp16: bool,
     adapter_path: str | None = None,
 ) -> tuple[str, str | None]:
+    """Execute SFT and return resulting model/adapter path information."""
     print("=== SFT phase ===")
     model, tokenizer = load_base_model_and_tokenizer(model_path, device=device, dtype=dtype)
 
@@ -424,6 +442,7 @@ def run_sft_phase(
 
 
 def main() -> None:
+    """CLI entrypoint for single-phase or two-phase training runs."""
     args = parse_args()
     normalize_phase(args)
     canonical_model_path = enforce_model_policy(args.model_path)

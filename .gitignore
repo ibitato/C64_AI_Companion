@@ -1,6 +1,6 @@
-# .gitignore para el proyecto C64_AI_Companion
+# .gitignore for C64_AI_Companion
 
-# Archivos de modelos
+# Model artifacts
 *.gguf
 *.bin
 *.pt
@@ -11,52 +11,52 @@
 models/
 offload/
 
-# Datos sin procesar
+# Raw data
 data/raw/*
 
-# Entorno virtual
+# Virtual environment
 venv/
 .env
 
-# Archivos de configuración local
+# Local configuration files
 *.local
 *.env.local
 
-# Archivos de sistema
+# OS files
 .DS_Store
 Thumbs.db
 
-# Archivos de compilación
+# Build artifacts
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Archivos de logs y resultados
+# Logs and runtime results
 tmp/
 logs/
 results/
 *.log
 
-# Archivos de IDE
+# IDE/editor files
 .idea/
 .vscode/
 *.swp
 
-# Archivos de dependencias
+# Dependency lockfiles
 Pipfile.lock
 poetry.lock
 
-# Archivos de documentación generados
+# Generated documentation artifacts
 docs/_build/
 
-# Archivos de datos procesados (opcional, dependiendo del tamaño)
+# Processed data artifacts (optional, size-dependent)
 data/processed/
 data/interim/
 *.arrow
 
-# Cachés locales por proyecto
+# Project-local caches
 .cache/
 
-# Contenedores
+# Container-local artifacts
 .docker/

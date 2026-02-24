@@ -1,3 +1,5 @@
+"""Unit tests for data-pipeline helpers and split/chunk behavior."""
+
 from scripts.data_pipeline import assign_doc_splits, normalize_text, token_chunks
 
 

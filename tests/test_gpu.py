@@ -1,3 +1,5 @@
+"""ROCm/GPU smoke tests for container runtime validation."""
+
 import os
 import shutil
 import subprocess
@@ -65,6 +67,7 @@ def test_torch_basic_gpu_kernel():
     if proc.returncode == 2:
         _skip_or_fail("GPU backend unavailable for torch kernel test")
     combined = f"{proc.stdout}\n{proc.stderr}".lower()
+    # These messages commonly indicate wheel/runtime/kernel mismatches on AMD stacks.
     known_mismatch = (
         "invalid device function",
         "hiperrorinvaliddevicefunction",

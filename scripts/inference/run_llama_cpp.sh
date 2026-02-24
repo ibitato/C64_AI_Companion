@@ -6,18 +6,19 @@ GGUF_DIR="${ROOT_DIR}/models/gguf"
 LLAMA_BIN="${LLAMA_BIN:-${ROOT_DIR}/.cache/llama.cpp/build/bin/llama-cli}"
 
 QUANT="${1:-Q4_K_M}"
-PROMPT="${2:-Explica brevemente que es el chip SID del Commodore 64.}"
+PROMPT="${2:-Briefly explain what the Commodore 64 SID chip does.}"
 shift || true
 shift || true
 EXTRA_ARGS=("$@")
 
+# Normalize short aliases to canonical quantization names.
 case "${QUANT^^}" in
   Q4|Q4_K_M) QUANT="Q4_K_M" ;;
   Q6|Q6_K) QUANT="Q6_K" ;;
   Q8|Q8_0) QUANT="Q8_0" ;;
   F16) QUANT="F16" ;;
   *)
-    echo "ERROR: cuantizacion no soportada '${QUANT}'. Usa: Q4_K_M, Q6_K, Q8_0, F16" >&2
+    echo "ERROR: unsupported quantization '${QUANT}'. Use: Q4_K_M, Q6_K, Q8_0, F16" >&2
     exit 1
     ;;
 esac
@@ -25,17 +26,17 @@ esac
 MODEL_PATH="${GGUF_DIR}/c64-ministral-3-8b-thinking-c64-${QUANT}.gguf"
 
 if [[ ! -x "${LLAMA_BIN}" ]]; then
-  echo "ERROR: no existe ejecutable llama.cpp en '${LLAMA_BIN}'" >&2
+  echo "ERROR: llama.cpp executable not found at '${LLAMA_BIN}'" >&2
   exit 1
 fi
 
 if [[ ! -f "${MODEL_PATH}" ]]; then
-  echo "ERROR: no existe modelo '${MODEL_PATH}'" >&2
+  echo "ERROR: model file not found at '${MODEL_PATH}'" >&2
   exit 1
 fi
 
-echo "Usando modelo: ${MODEL_PATH}"
-echo "Binario: ${LLAMA_BIN}"
+echo "Using model: ${MODEL_PATH}"
+echo "Executable: ${LLAMA_BIN}"
 
 set_n_predict=1
 for arg in "${EXTRA_ARGS[@]}"; do

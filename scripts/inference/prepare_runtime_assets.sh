@@ -13,7 +13,7 @@ write_modelfile() {
   local modelfile="${GGUF_DIR}/Modelfile.${quant}"
 
   if [[ ! -f "${GGUF_DIR}/${gguf_file}" ]]; then
-    echo "WARN: no existe ${GGUF_DIR}/${gguf_file}, se omite ${modelfile}" >&2
+    echo "WARN: ${GGUF_DIR}/${gguf_file} is missing, skipping ${modelfile}" >&2
     return 0
   fi
 
@@ -32,5 +32,5 @@ if [[ -f "${GGUF_DIR}/Modelfile.Q4_K_M" ]]; then
 fi
 
 echo ""
-echo "Listo. Modelfiles disponibles:"
+echo "Done. Available Modelfiles:"
 ls -1 "${GGUF_DIR}"/Modelfile* 2>/dev/null || true

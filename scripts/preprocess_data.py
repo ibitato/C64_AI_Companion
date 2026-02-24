@@ -15,6 +15,7 @@ from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse compatibility flags and forward them to the new pipeline."""
     parser = argparse.ArgumentParser(description="Run C64 preprocessing pipeline.")
     parser.add_argument("--source-dir", default="c64_docs")
     parser.add_argument("--model-path", default="models/Ministral-3-8B-Thinking")
@@ -28,6 +29,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Compatibility entrypoint that delegates to data_pipeline.py."""
     args = parse_args()
     pipeline = Path(__file__).with_name("data_pipeline.py")
     allow_ocr = args.allow_ocr and not args.no_ocr

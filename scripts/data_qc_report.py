@@ -22,12 +22,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_report(path: Path) -> dict:
+    """Load validation JSON report from disk."""
     if not path.exists():
         raise FileNotFoundError(f"Validation report not found: {path}")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def render_markdown(report: dict) -> str:
+    """Render a compact markdown summary from validation metrics."""
     checks = report.get("checks", {})
     dapt = checks.get("dapt_chunks", {})
     sft = checks.get("sft_examples", {})
@@ -77,6 +79,7 @@ def render_markdown(report: dict) -> str:
 
 
 def main() -> None:
+    """CLI entrypoint for markdown report generation."""
     args = parse_args()
     report = load_report(args.input)
     md = render_markdown(report)
