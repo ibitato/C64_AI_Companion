@@ -2,6 +2,13 @@
 
 Guía alineada con la implementación actual del repositorio.
 
+Antes de ejecutar `docker compose` en este repo:
+
+```bash
+export LOCAL_UID=$(id -u)
+export LOCAL_GID=$(id -g)
+```
+
 ## 1. Flujo recomendado
 
 - Paso 1: construir contenedor.

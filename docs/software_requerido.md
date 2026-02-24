@@ -18,6 +18,13 @@ id
 ls -l /dev/kfd /dev/dri/renderD128
 ```
 
+Variables recomendadas para ejecutar contenedor con tu usuario local:
+
+```bash
+export LOCAL_UID=$(id -u)
+export LOCAL_GID=$(id -g)
+```
+
 ## 2. Contenedor estándar del proyecto
 
 - Imagen base: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`

@@ -2,6 +2,15 @@
 
 ## 1. Build
 
+Antes de ejecutar `docker compose`, exporta tu UID/GID en el shell:
+
+```bash
+export LOCAL_UID=$(id -u)
+export LOCAL_GID=$(id -g)
+```
+
+Luego:
+
 ```bash
 docker compose build trainer
 ```

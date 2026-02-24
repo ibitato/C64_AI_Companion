@@ -15,6 +15,15 @@ El pipeline oficial se ejecuta dentro del contenedor ROCm 7.2.
 
 ## Ejecución recomendada
 
+Antes de correr `docker compose`, exporta UID/GID del usuario actual:
+
+```bash
+export LOCAL_UID=$(id -u)
+export LOCAL_GID=$(id -g)
+```
+
+Luego:
+
 ```bash
 docker compose run --rm trainer bash scripts/container/pipeline.sh
 ```

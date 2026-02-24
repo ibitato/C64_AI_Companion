@@ -34,6 +34,11 @@ C64_AI_Companion/
 - Docker Engine + Docker Compose plugin.
 - GPU AMD con `/dev/kfd` y `/dev/dri` accesibles.
 - Usuario en grupos `video` y `render`.
+- Exportar UID/GID antes de usar `docker compose` en este repo:
+  ```bash
+  export LOCAL_UID=$(id -u)
+  export LOCAL_GID=$(id -g)
+  ```
 
 ## Flujo rápido
 

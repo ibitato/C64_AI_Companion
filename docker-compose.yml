@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile.train
     image: c64-ai-companion:rocm72
     working_dir: /workspace
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     command: bash
     stdin_open: true
     tty: true
@@ -27,7 +28,3 @@ services:
       PYTHONUNBUFFERED: "1"
     volumes:
       - ./:/workspace
-      - hf_cache:/workspace/.cache/huggingface
-
-volumes:
-  hf_cache:
