@@ -221,6 +221,18 @@ def write_modelfile(*, gguf_dir: Path, model_file: Path, dry_run: bool) -> None:
     print(f"Wrote {modelfile_path}")
 
 
+def ensure_sentencepiece_available(*, dry_run: bool) -> None:
+    if dry_run:
+        return
+    try:
+        import sentencepiece  # noqa: F401
+    except Exception as exc:
+        raise RuntimeError(
+            "Missing dependency 'sentencepiece'. Rebuild trainer image after updating requirements "
+            "or install it in the container."
+        ) from exc
+
+
 def main() -> None:
     args = parse_args()
 
@@ -262,6 +274,8 @@ def main() -> None:
         update_repo=not args.no_update_llama_cpp,
         dry_run=args.dry_run,
     )
+
+    ensure_sentencepiece_available(dry_run=args.dry_run)
 
     gguf_dir.mkdir(parents=True, exist_ok=True)
     f16_gguf = gguf_dir / f"{args.name_prefix}-F16.gguf"

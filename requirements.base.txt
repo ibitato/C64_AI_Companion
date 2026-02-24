@@ -2,6 +2,7 @@
 # No torch packages here; ROCm torch comes from requirements.rocm72.txt
 
 transformers==5.2.0
+sentencepiece==0.2.1
 datasets==4.5.0
 peft==0.18.1
 accelerate==1.12.0
