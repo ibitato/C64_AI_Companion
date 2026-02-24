@@ -195,9 +195,8 @@ def load_sft_dataset(sft_dir: str, seed: int) -> DatasetDict:
 
 def tokenize_dapt_dataset(ds: DatasetDict, tokenizer: AutoTokenizer, max_length: int) -> DatasetDict:
     def tok(batch):
-        enc = tokenizer(batch["text"], truncation=True, max_length=max_length, padding=False)
-        enc["labels"] = [ids.copy() for ids in enc["input_ids"]]
-        return enc
+        # Leave labels to the data collator so variable-length batches are padded safely.
+        return tokenizer(batch["text"], truncation=True, max_length=max_length, padding=False)
 
     out: dict[str, Dataset] = {}
     for split, split_ds in ds.items():
