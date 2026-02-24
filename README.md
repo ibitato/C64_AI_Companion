@@ -19,8 +19,10 @@ C64_AI_Companion/
 ├── models/                       # Modelo base + salidas fine-tuned
 ├── scripts/
 │   ├── data_pipeline.py
+│   ├── export_gguf.py
 │   ├── fine_tune_mistral_8b.py
 │   └── container/
+│       ├── export_gguf.sh
 │       ├── gpu_smoke.sh
 │       ├── pipeline.sh
 │       └── train.sh
@@ -90,6 +92,27 @@ docker compose run --rm trainer bash scripts/container/train.sh \
 Nota SFT:
 - con el chat template actual de `Ministral-3-8B-Thinking`, el proyecto usa por defecto
   `assistant_only_loss=False` y `packing=False` para evitar incompatibilidades de máscara.
+
+### 5) Exportar a GGUF (Ollama / llama.cpp)
+
+```bash
+docker compose run --rm trainer bash scripts/container/export_gguf.sh \
+  --base-model-path models/Ministral-3-8B-Thinking \
+  --adapter-path models/fine-tuned \
+  --gguf-dir models/gguf \
+  --quantization Q4_K_M
+```
+
+Salidas:
+- `models/gguf/c64-ministral-3-8b-thinking-c64-F16.gguf`
+- `models/gguf/c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf`
+- `models/gguf/Modelfile`
+
+Uso en Ollama:
+
+```bash
+ollama create c64-ministral-c64 -f models/gguf/Modelfile
+```
 
 ## Tests
 

@@ -94,3 +94,18 @@ docker compose run --rm trainer bash scripts/container/train.sh \
 docker compose run --rm trainer pytest -q
 docker compose run --rm trainer bash scripts/container/gpu_smoke.sh
 ```
+
+## 7. Empaquetado GGUF para inferencia
+
+```bash
+docker compose run --rm trainer bash scripts/container/export_gguf.sh \
+  --base-model-path models/Ministral-3-8B-Thinking \
+  --adapter-path models/fine-tuned \
+  --gguf-dir models/gguf \
+  --quantization Q4_K_M
+```
+
+Con esto tendrás:
+- un GGUF `F16`,
+- un GGUF cuantizado (por defecto `Q4_K_M`),
+- y `Modelfile` para importar en Ollama.

@@ -57,6 +57,7 @@ El contenedor incluye:
 - `ghostscript`
 - `unpaper`
 - `poppler-utils`
+- `cmake` (necesario para compilar `llama-quantize` de `llama.cpp`)
 
 ## 5. Modelo base (obligatorio)
 

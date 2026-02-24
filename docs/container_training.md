@@ -84,3 +84,24 @@ Si el script falla por política de ruta, corrige `--model-path`.
 - Bajar `--batch-size`.
 - Subir `--grad-accum` para mantener batch efectivo.
 - Reducir `--max-length` temporalmente.
+
+## 7. Exportar resultado a GGUF
+
+```bash
+docker compose run --rm trainer bash scripts/container/export_gguf.sh \
+  --base-model-path models/Ministral-3-8B-Thinking \
+  --adapter-path models/fine-tuned \
+  --gguf-dir models/gguf \
+  --quantization Q4_K_M
+```
+
+Archivos generados:
+- `models/gguf/*-F16.gguf`
+- `models/gguf/*-Q4_K_M.gguf`
+- `models/gguf/Modelfile`
+
+Para importarlo en Ollama:
+
+```bash
+ollama create c64-ministral-c64 -f models/gguf/Modelfile
+```
