@@ -100,8 +100,26 @@ Archivos generados:
 - `models/gguf/*-Q4_K_M.gguf`
 - `models/gguf/Modelfile`
 
-Para importarlo en Ollama:
+Para generar `Q6_K` y `Q8_0` a partir de `F16`:
 
 ```bash
-ollama create c64-ministral-c64 -f models/gguf/Modelfile
+bash scripts/inference/quantize_additional_gguf.sh
+```
+
+Preparar `Modelfile` por cuantización:
+
+```bash
+bash scripts/inference/prepare_runtime_assets.sh
+```
+
+Registrar modelos en Ollama (Q4/Q6/Q8):
+
+```bash
+bash scripts/inference/create_ollama_models.sh
+```
+
+Ejecutar en llama.cpp:
+
+```bash
+bash scripts/inference/run_llama_cpp.sh Q8_0 "LOAD"
 ```

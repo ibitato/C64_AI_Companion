@@ -108,10 +108,28 @@ Salidas:
 - `models/gguf/c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf`
 - `models/gguf/Modelfile`
 
-Uso en Ollama:
+Generar cuantizaciones adicionales (`Q6_K` y `Q8_0`) desde `F16`:
 
 ```bash
-ollama create c64-ministral-c64 -f models/gguf/Modelfile
+bash scripts/inference/quantize_additional_gguf.sh
+```
+
+Preparar todos los `Modelfile` locales (`Q4`, `Q6`, `Q8`, `F16`):
+
+```bash
+bash scripts/inference/prepare_runtime_assets.sh
+```
+
+Uso en Ollama (registra Q4/Q6/Q8):
+
+```bash
+bash scripts/inference/create_ollama_models.sh
+```
+
+Uso en llama.cpp (elige `Q4_K_M`, `Q6_K`, `Q8_0` o `F16`):
+
+```bash
+bash scripts/inference/run_llama_cpp.sh Q6_K "Explica el SID del Commodore 64 en 2 frases."
 ```
 
 ## Tests

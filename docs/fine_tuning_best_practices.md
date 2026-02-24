@@ -107,5 +107,19 @@ docker compose run --rm trainer bash scripts/container/export_gguf.sh \
 
 Con esto tendrás:
 - un GGUF `F16`,
-- un GGUF cuantizado (por defecto `Q4_K_M`),
-- y `Modelfile` para importar en Ollama.
+- un GGUF cuantizado (`Q4_K_M`),
+- y `Modelfile` para Ollama.
+
+Para añadir `Q6_K` y `Q8_0`:
+
+```bash
+bash scripts/inference/quantize_additional_gguf.sh
+```
+
+Preparación y uso:
+
+```bash
+bash scripts/inference/prepare_runtime_assets.sh
+bash scripts/inference/create_ollama_models.sh
+bash scripts/inference/run_llama_cpp.sh Q6_K "Explica el VIC-II del C64."
+```
