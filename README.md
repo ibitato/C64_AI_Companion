@@ -79,6 +79,12 @@ docker compose run --rm trainer bash scripts/container/export_gguf.sh \
 bash scripts/inference/quantize_additional_gguf.sh
 ```
 
+8. Reproducible GGUF benchmark matrix (container-run, CSV output):
+
+```bash
+bash scripts/inference/benchmark_gguf_matrix.sh
+```
+
 ## Inference Runtimes
 
 - Ollama helper:
@@ -91,6 +97,12 @@ bash scripts/inference/create_ollama_models.sh
 
 ```bash
 bash scripts/inference/run_llama_cpp.sh Q6_K "Explain SID voices in two concise points."
+```
+
+- Benchmark all GGUF variants and write `results/benchmarks/*.csv`:
+
+```bash
+bash scripts/inference/benchmark_gguf_matrix.sh --models "F16 Q4_K_M Q6_K Q8_0"
 ```
 
 ## Hugging Face Artifacts
