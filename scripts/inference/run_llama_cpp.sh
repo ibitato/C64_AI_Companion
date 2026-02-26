@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GGUF_DIR="${ROOT_DIR}/models/gguf"
 LLAMA_BIN="${LLAMA_BIN:-${ROOT_DIR}/.cache/llama.cpp/build/bin/llama-cli}"
 
-QUANT="${1:-Q4_K_M}"
+QUANT="${1:-Q8_0}"
 PROMPT="${2:-Briefly explain what the Commodore 64 SID chip does.}"
 shift || true
 shift || true

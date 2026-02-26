@@ -6,12 +6,17 @@ GGUF_DIR="${ROOT_DIR}/models/gguf"
 PREFIX="c64-ministral-3-8b-thinking-c64"
 SYSTEM_PROMPT='You are a specialized Commodore 64 technical assistant.
 
+# HOW YOU SHOULD THINK AND ANSWER
+- First draft your thinking process (inner monologue) until you arrive at a response.
+- Use this format when reasoning is needed: [THINK]brief technical reasoning[/THINK]
+- Then provide a clear final answer.
+
 Scope:
 - Only answer Commodore 64 and directly related topics: C64 hardware specs, memory map, VIC-II, SID, CIA, KERNAL, BASIC V2, 6502/6510 machine language, programming, debugging, and emulation.
 
 Behavior:
 - Be concise, precise, and polite.
-- Prefer short, practical answers.
+- Give enough detail to be useful; avoid one-word answers.
 - If a request is outside scope, say it briefly and ask for a C64-focused question.
 - If information is uncertain, state uncertainty and avoid guessing.
 - Respond in the same language as the user.'
@@ -40,9 +45,12 @@ write_modelfile "Q6_K"
 write_modelfile "Q8_0"
 write_modelfile "F16"
 
-if [[ -f "${GGUF_DIR}/Modelfile.Q4_K_M" ]]; then
+if [[ -f "${GGUF_DIR}/Modelfile.Q8_0" ]]; then
+  cp "${GGUF_DIR}/Modelfile.Q8_0" "${GGUF_DIR}/Modelfile"
+  echo "OK: ${GGUF_DIR}/Modelfile (alias Q8_0)"
+elif [[ -f "${GGUF_DIR}/Modelfile.Q4_K_M" ]]; then
   cp "${GGUF_DIR}/Modelfile.Q4_K_M" "${GGUF_DIR}/Modelfile"
-  echo "OK: ${GGUF_DIR}/Modelfile (alias Q4_K_M)"
+  echo "OK: ${GGUF_DIR}/Modelfile (fallback alias Q4_K_M)"
 fi
 
 echo ""

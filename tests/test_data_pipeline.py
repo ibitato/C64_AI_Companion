@@ -1,6 +1,14 @@
 """Unit tests for data-pipeline helpers and split/chunk behavior."""
 
-from scripts.data_pipeline import assign_doc_splits, normalize_text, token_chunks
+from scripts.data_pipeline import (
+    assistant_has_think_tags,
+    assign_doc_splits,
+    collect_sft_thinking_stats,
+    format_assistant_with_think,
+    is_low_signal_sft_text,
+    normalize_text,
+    token_chunks,
+)
 
 
 def test_normalize_preserves_technical_symbols_and_case():
@@ -27,3 +35,50 @@ def test_token_chunks_overlap_and_min_chunk():
     assert len(chunks[0]) == 1024
     # Overlap check between first and second chunk.
     assert chunks[0][-128:] == chunks[1][:128]
+
+
+def test_format_assistant_with_think_wraps_reasoning_and_final_answer():
+    out = format_assistant_with_think("trace register map", "Final answer.")
+    assert out.startswith("[THINK]trace register map[/THINK]")
+    assert out.endswith("Final answer.")
+    assert assistant_has_think_tags(out)
+
+
+def test_assistant_has_think_tags_requires_balanced_markers():
+    assert assistant_has_think_tags("[THINK]x[/THINK] body")
+    assert not assistant_has_think_tags("missing tags")
+    assert not assistant_has_think_tags("[/THINK][THINK]")
+
+
+def test_is_low_signal_sft_text_filters_boilerplate_but_keeps_technical_text():
+    low_signal = "TABLE OF CONTENTS " + "1 2 3 4 5 " * 80
+    technical = (
+        "The VIC-II raster interrupt uses $D012 for line compare and $D011 high bit control. "
+        "For stable timing, configure CIA interrupt masks and acknowledge IRQ sources correctly. "
+        "This section explains how BASIC and ML routines coordinate display updates without jitter. "
+    ) * 4
+    assert is_low_signal_sft_text(low_signal)
+    assert not is_low_signal_sft_text(technical)
+
+
+def test_collect_sft_thinking_stats_counts_assistant_think_tags(tmp_path):
+    sft_dir = tmp_path / "sft"
+    sft_dir.mkdir()
+    train = sft_dir / "train.jsonl"
+    train.write_text(
+        "\n".join(
+            [
+                '{"messages":[{"role":"assistant","content":"[THINK]a[/THINK]\\nfinal"}]}',
+                '{"messages":[{"role":"assistant","content":"final only"}]}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    for split in ("validation", "test"):
+        (sft_dir / f"{split}.jsonl").write_text("", encoding="utf-8")
+
+    stats = collect_sft_thinking_stats(sft_dir)
+    assert stats["assistant_messages_total"] == 2
+    assert stats["assistant_with_think_total"] == 1
+    assert stats["assistant_with_think_ratio"] == 0.5

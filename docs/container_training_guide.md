@@ -52,7 +52,7 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --sft-dir data/processed/sft \
   --output-dir models/fine-tuned \
   --precision bf16 \
-  --no-assistant-only-loss \
+  --assistant-only-loss \
   --no-packing \
   --use-lora
 ```
@@ -62,6 +62,7 @@ docker compose run --rm trainer bash scripts/container/train.sh \
 - DAPT outputs in `models/*-dapt` or configured output path.
 - Final SFT output in target `models/*` path.
 - Training checkpoints under the selected output directory.
+- Data validation report includes SFT THINK coverage under `checks.sft_thinking`.
 
 ## Failure Modes
 

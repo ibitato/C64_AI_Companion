@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
         default="language_qkvo",
     )
 
-    parser.add_argument("--assistant-only-loss", action="store_true", default=False)
+    parser.add_argument("--assistant-only-loss", action="store_true", default=True)
     parser.add_argument("--no-assistant-only-loss", dest="assistant_only_loss", action="store_false")
     parser.add_argument("--packing", action="store_true", default=False)
     parser.add_argument("--no-packing", dest="packing", action="store_false")

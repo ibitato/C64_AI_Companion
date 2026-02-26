@@ -19,6 +19,6 @@ python scripts/fine_tune_mistral_8b.py \
   --sft-dir data/processed/sft \
   --output-dir models/fine-tuned \
   --precision bf16 \
-  --no-assistant-only-loss \
+  --assistant-only-loss \
   --no-packing \
   --use-lora

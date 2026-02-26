@@ -24,10 +24,18 @@
 
 | Split | Examples |
 |---|---:|
-| train | 1387 |
-| validation | 166 |
-| test | 109 |
-| total | 1662 |
+| train | 881 |
+| validation | 109 |
+| test | 95 |
+| total | 1085 |
+
+## SFT Thinking Coverage
+
+| Metric | Value |
+|---|---:|
+| Assistant messages | n/a |
+| Assistant messages with THINK | n/a |
+| THINK ratio | n/a |
 
 ## Warnings
 

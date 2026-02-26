@@ -27,6 +27,7 @@ bash scripts/inference/prepare_runtime_assets.sh
 ```
 
 `prepare_runtime_assets.sh` writes `Modelfile*` files with a C64-specialist `SYSTEM` prompt so Ollama runs keep the same scope/behavior constraints used during training data construction.
+When `Q8_0` is available, `Modelfile` (the default alias) points to `Q8_0` for better instruction quality; `Q4_K_M` remains available as a lower-memory option.
 
 ## Register Models in Ollama
 

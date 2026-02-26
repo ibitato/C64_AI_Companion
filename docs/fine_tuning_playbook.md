@@ -14,13 +14,15 @@ Fine-tune a reasoning-capable Ministral 3 8B base model on technical C64 data us
 - Gradient accumulation: `16`
 - Learning rate: `2e-5`
 - Epochs: `3`
+- `assistant_only_loss`: enabled
 
 ## System Prompt Used in SFT Data
 
 The SFT generator now injects a constrained C64-specialist system prompt that:
 
+- preserves explicit reasoning mode via `[THINK]...[/THINK]` when needed,
 - restricts scope to Commodore 64 and directly related topics,
-- enforces concise and polite answers,
+- enforces concise and polite answers without collapsing to one-word replies,
 - requests explicit uncertainty when needed,
 - asks for C64-focused reformulation when a request is out of scope,
 - keeps responses in the user's language.
@@ -48,7 +50,7 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --sft-dir data/processed/sft \
   --output-dir models/fine-tuned-sft \
   --precision bf16 \
-  --no-assistant-only-loss \
+  --assistant-only-loss \
   --no-packing \
   --use-lora
 ```
@@ -71,3 +73,4 @@ docker compose run --rm trainer bash scripts/container/train.sh
 - Validation split empty.
 - Loss divergence or NaNs.
 - GPU backend instability.
+- Low THINK coverage reported in `data/processed/validation_report.json`.

@@ -46,3 +46,5 @@ python scripts/data_qc_report.py \
 
 - Base model tokenizer path is policy-restricted to `models/Ministral-3-8B-Thinking`.
 - OCR is enabled in container pipeline execution.
+- SFT generation filters low-signal boilerplate pages (for example: table-of-contents and copyright pages) and very noisy pages before creating chat examples.
+- Validation now tracks THINK-tag coverage in assistant SFT targets to catch reasoning-format regressions before training.

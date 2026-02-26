@@ -13,7 +13,7 @@ import json
 import os
 import shutil
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -397,7 +397,7 @@ def upload_repo(api: HfApi, repo_id: str, stage_dir: Path, private: bool, dry_ru
         repo_id=repo_id,
         repo_type="model",
         folder_path=str(stage_dir),
-        commit_message=f"Publish fine-tuning artifacts ({datetime.now(UTC).isoformat()})",
+        commit_message=f"Publish fine-tuning artifacts ({datetime.now(timezone.utc).isoformat()})",
     )
     print(f"Uploaded: https://huggingface.co/{repo_id}")
 

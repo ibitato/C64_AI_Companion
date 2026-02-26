@@ -22,10 +22,15 @@ create_model() {
   ollama create "${model_name}" -f "${modelfile}"
 }
 
-create_model "c64-ministral-c64" "Modelfile.Q4_K_M"
+if [[ -f "${GGUF_DIR}/Modelfile.Q8_0" ]]; then
+  create_model "c64-ministral-c64" "Modelfile.Q8_0"
+else
+  create_model "c64-ministral-c64" "Modelfile.Q4_K_M"
+fi
+create_model "c64-ministral-c64-q4" "Modelfile.Q4_K_M"
 create_model "c64-ministral-c64-q6" "Modelfile.Q6_K"
 create_model "c64-ministral-c64-q8" "Modelfile.Q8_0"
 
 echo ""
 echo "Ollama models available for this project:"
-ollama list | grep -E '^c64-ministral-c64(-q6|-q8)?\b' || true
+ollama list | grep -E '^c64-ministral-c64(-q4|-q6|-q8)?\b' || true

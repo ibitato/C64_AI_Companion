@@ -52,6 +52,11 @@ DUPLICATES_PATH = INTERIM_DIR / "dedup" / "duplicates.parquet"
 VALIDATION_REPORT_PATH = PROCESSED_DIR / "validation_report.json"
 
 C64_SYSTEM_PROMPT = (
+    "# HOW YOU SHOULD THINK AND ANSWER\n\n"
+    "First draft your thinking process (inner monologue) until you arrive at a response. "
+    "Use this format when reasoning is needed:\n"
+    "[THINK]brief technical reasoning[/THINK]\n"
+    "Then provide a clear final answer.\n\n"
     "You are a specialized Commodore 64 technical assistant.\n\n"
     "Scope:\n"
     "- Only answer Commodore 64 and directly related topics: C64 hardware specs, "
@@ -59,7 +64,7 @@ C64_SYSTEM_PROMPT = (
     "programming, debugging, and emulation.\n\n"
     "Behavior:\n"
     "- Be concise, precise, and polite.\n"
-    "- Prefer short, practical answers.\n"
+    "- Give enough detail to be useful; avoid one-word answers.\n"
     "- If a request is outside scope, say it briefly and ask for a C64-focused question.\n"
     "- If information is uncertain, state uncertainty and avoid guessing.\n"
     "- Respond in the same language as the user."
@@ -641,6 +646,71 @@ def extractive_summary(text: str, max_sentences: int = 4, max_chars: int = 900) 
     return "\n".join(f"- {s}" for s in selected if s)
 
 
+def assistant_has_think_tags(content: str) -> bool:
+    """Return True when assistant content contains a well-ordered THINK block."""
+    start = content.find("[THINK]")
+    end = content.find("[/THINK]")
+    return start >= 0 and end > start
+
+
+def format_assistant_with_think(reasoning: str, final_answer: str) -> str:
+    """Format assistant output as THINK block followed by final answer."""
+    compact_reasoning = re.sub(r"\s+", " ", reasoning).strip()
+    compact_final = final_answer.strip()
+    if not compact_reasoning:
+        compact_reasoning = "I extract the relevant C64 technical details before answering."
+    return f"[THINK]{compact_reasoning}[/THINK]\n{compact_final}"
+
+
+_LOW_SIGNAL_SFT_PATTERNS = re.compile(
+    r"\b(table of contents|contents|all rights reserved|copyright|first edition)\b",
+    re.IGNORECASE,
+)
+
+
+def _alpha_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    letters = sum(ch.isalpha() for ch in text)
+    return letters / max(len(text), 1)
+
+
+def _digit_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    digits = sum(ch.isdigit() for ch in text)
+    return digits / max(len(text), 1)
+
+
+def is_low_signal_sft_text(text: str) -> bool:
+    """Reject pages that are likely boilerplate/index noise for SFT."""
+    compact = re.sub(r"\s+", " ", text).strip()
+    if len(compact) < 350:
+        return True
+    if _LOW_SIGNAL_SFT_PATTERNS.search(compact[:1200]):
+        return True
+    if _alpha_ratio(compact) < 0.55:
+        return True
+    # Typical table/index pages are number-heavy and low in sentence-like content.
+    if _digit_ratio(compact) > 0.22 and "$" not in compact:
+        return True
+    return False
+
+
+def extract_address_context_lines(text: str, addresses: list[str], max_items: int = 6, window: int = 90) -> list[str]:
+    """Extract short local snippets around each address to create grounded SFT targets."""
+    out: list[str] = []
+    for addr in addresses[:max_items]:
+        idx = text.find(addr)
+        if idx < 0:
+            continue
+        lo = max(0, idx - window)
+        hi = min(len(text), idx + len(addr) + window)
+        snippet = re.sub(r"\s+", " ", text[lo:hi]).strip()
+        out.append(f"- {addr}: {snippet}")
+    return out
+
+
 def stage_build_sft(
     dedup_path: Path,
     sft_dir: Path,
@@ -661,10 +731,14 @@ def stage_build_sft(
     rows: list[dict[str, Any]] = []
     for rec in df.sort_values(["doc_id", "page_number"]).to_dict(orient="records"):
         text = rec["text_normalized"]
-        if len(text) < 350:
+        if float(rec.get("quality_score", 0.0)) < 0.62:
+            continue
+        if is_low_signal_sft_text(text):
             continue
         excerpt = text[:1600]
         summary = extractive_summary(excerpt)
+        if len(summary.replace("-", "").strip()) < 80:
+            continue
         refs = [{"source_file": rec["source_file"], "page_number": int(rec["page_number"])}]
 
         # Example 1: explanation-style
@@ -683,9 +757,10 @@ def stage_build_sft(
                     },
                     {
                         "role": "assistant",
-                        "content": (
+                        "content": format_assistant_with_think(
+                            "I extract the main C64 technical facts from the excerpt and keep only the most useful points.",
                             "Here are the key technical points:\n"
-                            f"{summary}"
+                            f"{summary}",
                         ),
                     },
                 ],
@@ -698,8 +773,10 @@ def stage_build_sft(
         # Example 2: factual extraction if memory addresses appear.
         if max_examples_per_page > 1:
             addresses = sorted(set(re.findall(r"\$[0-9A-Fa-f]{4}", excerpt)))
-            if addresses:
+            if len(addresses) >= 2:
                 mention = ", ".join(addresses[:8])
+                context_lines = extract_address_context_lines(excerpt, addresses)
+                context_block = "\n".join(context_lines) if context_lines else "- Context not found."
                 rows.append(
                     {
                         "id": f"{rec['id']}:sft-2",
@@ -716,10 +793,11 @@ def stage_build_sft(
                             },
                             {
                                 "role": "assistant",
-                                "content": (
+                                "content": format_assistant_with_think(
+                                    "I identify explicit memory addresses in the excerpt and map each one to nearby wording before summarizing use.",
                                     f"Memory addresses explicitly mentioned: {mention}\n\n"
-                                    "Based on the excerpt, these addresses are referenced in the "
-                                    "technical context described there."
+                                    "Usage context in the excerpt:\n"
+                                    f"{context_block}",
                                 ),
                             },
                         ],
@@ -744,6 +822,55 @@ def stage_build_sft(
         f"test={len(out[out['split']=='test'])}"
     )
     return out
+
+
+def collect_sft_thinking_stats(sft_dir: Path) -> dict[str, Any]:
+    """Compute THINK-tag coverage for assistant messages in SFT splits."""
+    split_stats: dict[str, dict[str, Any]] = {}
+    assistant_total = 0
+    assistant_with_think_total = 0
+    bad_json_lines = 0
+
+    for split in ("train", "validation", "test"):
+        path = sft_dir / f"{split}.jsonl"
+        assistant_messages = 0
+        assistant_with_think = 0
+        if path.exists():
+            with path.open("r", encoding="utf-8") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        bad_json_lines += 1
+                        continue
+                    for msg in rec.get("messages", []):
+                        if msg.get("role") != "assistant":
+                            continue
+                        assistant_messages += 1
+                        content = msg.get("content", "")
+                        if isinstance(content, str) and assistant_has_think_tags(content):
+                            assistant_with_think += 1
+
+        ratio = float(assistant_with_think / assistant_messages) if assistant_messages else 0.0
+        split_stats[split] = {
+            "assistant_messages": assistant_messages,
+            "assistant_with_think": assistant_with_think,
+            "assistant_with_think_ratio": round(ratio, 4),
+        }
+        assistant_total += assistant_messages
+        assistant_with_think_total += assistant_with_think
+
+    total_ratio = float(assistant_with_think_total / assistant_total) if assistant_total else 0.0
+    return {
+        "splits": split_stats,
+        "assistant_messages_total": assistant_total,
+        "assistant_with_think_total": assistant_with_think_total,
+        "assistant_with_think_ratio": round(total_ratio, 4),
+        "bad_json_lines": bad_json_lines,
+    }
 
 
 def stage_validate(
@@ -779,6 +906,7 @@ def stage_validate(
     coverage = float(pages_with_text / total_pages) if total_pages else 0.0
     dapt_total = int(len(dapt_train) + len(dapt_val) + len(dapt_test))
     sft_total = int(sum(sft_counts.values()))
+    sft_thinking = collect_sft_thinking_stats(sft_dir)
 
     report["checks"] = {
         "total_pages": total_pages,
@@ -795,6 +923,7 @@ def stage_validate(
             **sft_counts,
             "total": sft_total,
         },
+        "sft_thinking": sft_thinking,
     }
 
     # Soft gates: keep report explicit but do not block execution with hard failures.
@@ -805,6 +934,12 @@ def stage_validate(
         warnings.append("Low DAPT chunk count (<100).")
     if sft_total < 50:
         warnings.append("Low SFT example count (<50).")
+    thinking_ratio = float(sft_thinking.get("assistant_with_think_ratio", 0.0))
+    if sft_total > 0 and thinking_ratio < 0.90:
+        warnings.append("Low THINK-tag coverage in assistant SFT targets (<90%).")
+    bad_json_lines = int(sft_thinking.get("bad_json_lines", 0))
+    if bad_json_lines > 0:
+        warnings.append(f"SFT JSONL parse issues detected ({bad_json_lines} bad lines).")
     report["warnings"] = warnings
     report["ok"] = len(warnings) == 0
 

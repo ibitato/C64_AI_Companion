@@ -33,6 +33,8 @@ def render_markdown(report: dict) -> str:
     checks = report.get("checks", {})
     dapt = checks.get("dapt_chunks", {})
     sft = checks.get("sft_examples", {})
+    thinking = checks.get("sft_thinking", {})
+    has_thinking = bool(thinking)
     warnings = report.get("warnings", [])
 
     lines: list[str] = []
@@ -66,6 +68,19 @@ def render_markdown(report: dict) -> str:
     lines.append(f"| validation | {sft.get('validation', 0)} |")
     lines.append(f"| test | {sft.get('test', 0)} |")
     lines.append(f"| total | {sft.get('total', 0)} |")
+    lines.append("")
+    lines.append("## SFT Thinking Coverage")
+    lines.append("")
+    lines.append("| Metric | Value |")
+    lines.append("|---|---:|")
+    if has_thinking:
+        lines.append(f"| Assistant messages | {thinking.get('assistant_messages_total', 0)} |")
+        lines.append(f"| Assistant messages with THINK | {thinking.get('assistant_with_think_total', 0)} |")
+        lines.append(f"| THINK ratio | {thinking.get('assistant_with_think_ratio', 0)} |")
+    else:
+        lines.append("| Assistant messages | n/a |")
+        lines.append("| Assistant messages with THINK | n/a |")
+        lines.append("| THINK ratio | n/a |")
     lines.append("")
     lines.append("## Warnings")
     lines.append("")
