@@ -11,22 +11,31 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
+import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import torch
 from huggingface_hub import HfApi
 
 DEFAULT_LORA_REPO = "ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora"
 DEFAULT_GGUF_REPO = "ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf"
+DEFAULT_COLLECTION_URL = (
+    "https://huggingface.co/collections/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-699d67350911049ec1a82e18"
+)
 BASE_MODEL_ID = "mistralai/Ministral-3-8B-Reasoning-2512"
 GITHUB_REPO_URL = "https://github.com/ibitato/C64_AI_Companion"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LORA_DIR = PROJECT_ROOT / "models" / "fine-tuned"
+DAPT_DIR = PROJECT_ROOT / "models" / "fine-tuned-dapt"
 GGUF_DIR = PROJECT_ROOT / "models" / "gguf"
 BASE_CONFIG = PROJECT_ROOT / "models" / "Ministral-3-8B-Thinking" / "config.json"
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+CHECKPOINT_RE = re.compile(r"checkpoint-(\d+)$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,55 +82,171 @@ def load_context_length() -> int:
     return int(cfg["text_config"]["max_position_embeddings"])
 
 
-def load_training_summary() -> dict[str, object]:
-    """Collect compact metadata from local training outputs for model cards."""
-    sft_state_path = LORA_DIR / "checkpoint-132" / "trainer_state.json"
-    dapt_state_path = PROJECT_ROOT / "models" / "fine-tuned-dapt" / "checkpoint-39" / "trainer_state.json"
+def latest_checkpoint_dir(model_dir: Path) -> Path | None:
+    """Return latest numeric checkpoint dir (checkpoint-N) if available."""
+    candidates: list[tuple[int, float, Path]] = []
+    for p in model_dir.glob("checkpoint-*"):
+        if not p.is_dir():
+            continue
+        match = CHECKPOINT_RE.fullmatch(p.name)
+        if not match:
+            continue
+        candidates.append((int(match.group(1)), p.stat().st_mtime, p))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[-1][2]
 
-    sft_state = {}
-    dapt_state = {}
-    if sft_state_path.exists():
-        sft_state = json.loads(sft_state_path.read_text(encoding="utf-8"))
-    if dapt_state_path.exists():
-        dapt_state = json.loads(dapt_state_path.read_text(encoding="utf-8"))
+
+def load_json_file(path: Path) -> dict[str, object]:
+    """Load a JSON dictionary from disk."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def count_jsonl_rows(path: Path) -> int:
+    """Count rows in a JSONL file."""
+    with path.open("r", encoding="utf-8") as f:
+        return sum(1 for _ in f)
+
+
+def count_parquet_rows(path: Path) -> int:
+    """Count rows in a parquet file via metadata."""
+    try:
+        import pyarrow.parquet as pq
+    except Exception as exc:
+        raise RuntimeError(
+            "pyarrow is required to read parquet row counts for training summary publication."
+        ) from exc
+    return int(pq.ParquetFile(path).metadata.num_rows)
+
+
+def load_data_split_summary() -> dict[str, int]:
+    """Collect DAPT and SFT split sizes from project-local processed datasets."""
+    dapt_train = PROCESSED_DIR / "dapt" / "train.parquet"
+    dapt_val = PROCESSED_DIR / "dapt" / "validation.parquet"
+    dapt_test = PROCESSED_DIR / "dapt" / "test.parquet"
+    sft_train = PROCESSED_DIR / "sft" / "train.jsonl"
+    sft_val = PROCESSED_DIR / "sft" / "validation.jsonl"
+    sft_test = PROCESSED_DIR / "sft" / "test.jsonl"
+    required = [dapt_train, dapt_val, dapt_test, sft_train, sft_val, sft_test]
+    missing = [str(p) for p in required if not p.exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing processed dataset files: {missing}")
+    return {
+        "dapt_train": count_parquet_rows(dapt_train),
+        "dapt_validation": count_parquet_rows(dapt_val),
+        "dapt_test": count_parquet_rows(dapt_test),
+        "sft_train": count_jsonl_rows(sft_train),
+        "sft_validation": count_jsonl_rows(sft_val),
+        "sft_test": count_jsonl_rows(sft_test),
+    }
+
+
+def normalize_enum(value: object) -> object:
+    """Normalize enum-like values into plain JSON-safe scalars."""
+    if hasattr(value, "value"):
+        return getattr(value, "value")
+    return value
+
+
+def guess_lora_scope(target_modules: object) -> str:
+    """Infer a human-readable LoRA scope from adapter target modules."""
+    if not isinstance(target_modules, list) or not target_modules:
+        return "unknown"
+    suffixes = (".q_proj", ".k_proj", ".v_proj", ".o_proj")
+    if all(isinstance(m, str) and m.endswith(suffixes) for m in target_modules):
+        return "language_qkvo"
+    return "language_all_linear"
+
+
+def load_training_recipe() -> dict[str, object]:
+    """Collect key training recipe values from local artifacts."""
+    args_path = LORA_DIR / "training_args.bin"
+    if not args_path.exists():
+        raise FileNotFoundError(f"Missing expected training arguments artifact: {args_path}")
+    args = torch.load(str(args_path), map_location="cpu", weights_only=False)
+
+    adapter_config_path = LORA_DIR / "adapter_config.json"
+    if not adapter_config_path.exists():
+        raise FileNotFoundError(f"Missing expected adapter config: {adapter_config_path}")
+    adapter_cfg = load_json_file(adapter_config_path)
 
     return {
-        "data_splits": {
-            "dapt_train": 408,
-            "dapt_validation": 27,
-            "dapt_test": 45,
-            "sft_train": 1387,
-            "sft_validation": 166,
-            "sft_test": 109,
-        },
-        "training_recipe": {
-            "pipeline": "DAPT + SFT (LoRA)",
-            "precision": "bf16",
-            "max_length": 2048,
-            "batch_size_per_device": 2,
-            "gradient_accumulation": 16,
-            "learning_rate": 2e-5,
-            "epochs": 3.0,
-            "lora_r": 16,
-            "lora_alpha": 32,
-            "lora_dropout": 0.05,
-            "lora_scope": "language_qkvo",
-            "assistant_only_loss": False,
-            "packing": False,
+        "pipeline": "DAPT + SFT (LoRA)",
+        "precision": "bf16" if bool(getattr(args, "bf16", False)) else ("fp16" if bool(getattr(args, "fp16", False)) else "fp32"),
+        "max_length": int(getattr(args, "max_length", 2048)),
+        "batch_size_per_device": int(getattr(args, "per_device_train_batch_size", 0)),
+        "gradient_accumulation": int(getattr(args, "gradient_accumulation_steps", 0)),
+        "learning_rate": float(getattr(args, "learning_rate", 0.0)),
+        "epochs": float(getattr(args, "num_train_epochs", 0.0)),
+        "warmup_steps": int(getattr(args, "warmup_steps", 0)),
+        "logging_steps": int(getattr(args, "logging_steps", 0)),
+        "save_steps": int(getattr(args, "save_steps", 0)),
+        "eval_steps": int(getattr(args, "eval_steps", 0)),
+        "optim": normalize_enum(getattr(args, "optim", None)),
+        "seed": int(getattr(args, "seed", 0)),
+        "eval_strategy": normalize_enum(getattr(args, "eval_strategy", None)),
+        "gradient_checkpointing": bool(getattr(args, "gradient_checkpointing", False)),
+        "assistant_only_loss": bool(getattr(args, "assistant_only_loss", False)),
+        "packing": bool(getattr(args, "packing", False)),
+        "lora_r": int(adapter_cfg.get("r", 0)),
+        "lora_alpha": int(adapter_cfg.get("lora_alpha", 0)),
+        "lora_dropout": float(adapter_cfg.get("lora_dropout", 0.0)),
+        "lora_scope": guess_lora_scope(adapter_cfg.get("target_modules")),
+    }
+
+
+def load_git_revision() -> str | None:
+    """Return current git revision (short SHA) when available."""
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        return out.strip() or None
+    except Exception:
+        return None
+
+
+def load_training_summary() -> dict[str, object]:
+    """Collect compact metadata from local training outputs for model cards."""
+    sft_ckpt = latest_checkpoint_dir(LORA_DIR)
+    dapt_ckpt = latest_checkpoint_dir(DAPT_DIR)
+    if sft_ckpt is None:
+        raise FileNotFoundError(f"No SFT checkpoint found in {LORA_DIR}")
+    if dapt_ckpt is None:
+        raise FileNotFoundError(f"No DAPT checkpoint found in {DAPT_DIR}")
+
+    sft_state_path = sft_ckpt / "trainer_state.json"
+    dapt_state_path = dapt_ckpt / "trainer_state.json"
+    if not sft_state_path.exists():
+        raise FileNotFoundError(f"Missing expected SFT trainer state: {sft_state_path}")
+    if not dapt_state_path.exists():
+        raise FileNotFoundError(f"Missing expected DAPT trainer state: {dapt_state_path}")
+
+    sft_state = load_json_file(sft_state_path)
+    dapt_state = load_json_file(dapt_state_path)
+    sft_log_history = sft_state.get("log_history", [])
+    sft_last_log = sft_log_history[-1] if isinstance(sft_log_history, list) and sft_log_history else {}
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_revision": load_git_revision(),
+        "data_splits": load_data_split_summary(),
+        "training_recipe": load_training_recipe(),
+        "artifacts": {
+            "dapt_checkpoint": dapt_ckpt.name,
+            "sft_checkpoint": sft_ckpt.name,
         },
         "run_state": {
             "dapt_global_step": dapt_state.get("global_step"),
+            "dapt_max_steps": dapt_state.get("max_steps"),
             "sft_global_step": sft_state.get("global_step"),
-            "sft_last_logged_loss": (
-                sft_state.get("log_history", [{}])[-1].get("loss")
-                if sft_state.get("log_history")
-                else None
-            ),
-            "sft_last_logged_token_accuracy": (
-                sft_state.get("log_history", [{}])[-1].get("mean_token_accuracy")
-                if sft_state.get("log_history")
-                else None
-            ),
+            "sft_max_steps": sft_state.get("max_steps"),
+            "sft_last_logged_step": sft_last_log.get("step"),
+            "sft_last_logged_loss": sft_last_log.get("loss"),
+            "sft_last_logged_token_accuracy": sft_last_log.get("mean_token_accuracy"),
         },
     }
 
@@ -131,6 +256,9 @@ def render_lora_card(context_length: int, summary: dict[str, object], repo_id: s
     data = summary["data_splits"]
     recipe = summary["training_recipe"]
     run = summary["run_state"]
+    artifacts = summary.get("artifacts", {})
+    generated_at = summary.get("generated_at_utc", "unknown")
+    git_rev = summary.get("git_revision", "unknown")
 
     return f"""---
 license: apache-2.0
@@ -163,6 +291,11 @@ Objective:
 Project source code and pipeline:
 - {GITHUB_REPO_URL}
 
+Related repositories:
+- LoRA: https://huggingface.co/{DEFAULT_LORA_REPO}
+- GGUF: https://huggingface.co/{DEFAULT_GGUF_REPO}
+- Collection: {DEFAULT_COLLECTION_URL}
+
 ## Base Model
 
 - Base model: `{BASE_MODEL_ID}`
@@ -184,14 +317,23 @@ Project source code and pipeline:
 - Gradient accumulation: {recipe["gradient_accumulation"]}
 - Learning rate: {recipe["learning_rate"]}
 - Epochs: {recipe["epochs"]}
+- Warmup steps: {recipe["warmup_steps"]}
+- Logging/save/eval steps: {recipe["logging_steps"]}/{recipe["save_steps"]}/{recipe["eval_steps"]}
+- Optimizer: {recipe["optim"]}, eval strategy: {recipe["eval_strategy"]}
+- Gradient checkpointing: {recipe["gradient_checkpointing"]}
 - LoRA: r={recipe["lora_r"]}, alpha={recipe["lora_alpha"]}, dropout={recipe["lora_dropout"]}, scope={recipe["lora_scope"]}
 - SFT options: assistant_only_loss={recipe["assistant_only_loss"]}, packing={recipe["packing"]}
 
 Run summary:
-- DAPT global steps: {run["dapt_global_step"]}
-- SFT global steps: {run["sft_global_step"]}
+- DAPT checkpoint: {artifacts.get("dapt_checkpoint")}
+- SFT checkpoint: {artifacts.get("sft_checkpoint")}
+- DAPT global steps: {run["dapt_global_step"]} / {run["dapt_max_steps"]}
+- SFT global steps: {run["sft_global_step"]} / {run["sft_max_steps"]}
+- Last logged SFT step: {run["sft_last_logged_step"]}
 - Last logged SFT loss: {run["sft_last_logged_loss"]}
 - Last logged SFT token accuracy: {run["sft_last_logged_token_accuracy"]}
+- Card generated at (UTC): {generated_at}
+- Source git revision: {git_rev}
 
 ## Usage (Transformers + PEFT)
 
@@ -227,8 +369,13 @@ print(tokenizer.decode(out[0], skip_special_tokens=True))
 """
 
 
-def render_gguf_card(context_length: int, repo_id: str) -> str:
+def render_gguf_card(context_length: int, summary: dict[str, object], repo_id: str) -> str:
     """Render markdown model card content for the GGUF repository."""
+    data = summary["data_splits"]
+    run = summary["run_state"]
+    artifacts = summary.get("artifacts", {})
+    generated_at = summary.get("generated_at_utc", "unknown")
+    git_rev = summary.get("git_revision", "unknown")
     files = [
         "c64-ministral-3-8b-thinking-c64-F16.gguf",
         "c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf",
@@ -266,11 +413,26 @@ GGUF exports of the C64-focused reasoning fine-tune, ready for **llama.cpp** and
 Project source code and training pipeline:
 - {GITHUB_REPO_URL}
 
+Related repositories:
+- LoRA: https://huggingface.co/{DEFAULT_LORA_REPO}
+- GGUF: https://huggingface.co/{DEFAULT_GGUF_REPO}
+- Collection: {DEFAULT_COLLECTION_URL}
+
 ## Technical Details
 
 - Derived from: `{BASE_MODEL_ID}` + project LoRA adaptation
 - Context length in GGUF metadata: **{context_length:,} tokens**
 - Architecture in GGUF: `mistral3`
+
+## Training Provenance
+
+- DAPT checkpoint used: {artifacts.get("dapt_checkpoint")}
+- SFT checkpoint used: {artifacts.get("sft_checkpoint")}
+- DAPT steps: {run["dapt_global_step"]} / {run["dapt_max_steps"]}
+- SFT steps: {run["sft_global_step"]} / {run["sft_max_steps"]}
+- Data splits: DAPT {data["dapt_train"]}/{data["dapt_validation"]}/{data["dapt_test"]}, SFT {data["sft_train"]}/{data["sft_validation"]}/{data["sft_test"]}
+- Card generated at (UTC): {generated_at}
+- Source git revision: {git_rev}
 
 ## Included Files
 
@@ -331,11 +493,13 @@ def prepare_lora_stage(stage_dir: Path, repo_id: str) -> None:
         hardlink_or_copy(src, stage_dir / name)
 
     # Include trainer states for reproducibility.
-    sft_state = LORA_DIR / "checkpoint-132" / "trainer_state.json"
-    dapt_state = PROJECT_ROOT / "models" / "fine-tuned-dapt" / "checkpoint-39" / "trainer_state.json"
-    if sft_state.exists():
+    sft_ckpt = latest_checkpoint_dir(LORA_DIR)
+    dapt_ckpt = latest_checkpoint_dir(DAPT_DIR)
+    sft_state = sft_ckpt / "trainer_state.json" if sft_ckpt else None
+    dapt_state = dapt_ckpt / "trainer_state.json" if dapt_ckpt else None
+    if sft_state and sft_state.exists():
         hardlink_or_copy(sft_state, stage_dir / "trainer_state_sft.json")
-    if dapt_state.exists():
+    if dapt_state and dapt_state.exists():
         hardlink_or_copy(dapt_state, stage_dir / "trainer_state_dapt.json")
 
     summary = load_training_summary()
@@ -378,8 +542,9 @@ def prepare_gguf_stage(stage_dir: Path, repo_id: str) -> None:
         encoding="utf-8",
     )
     context_length = load_context_length()
+    summary = load_training_summary()
     (stage_dir / "README.md").write_text(
-        render_gguf_card(context_length=context_length, repo_id=repo_id),
+        render_gguf_card(context_length=context_length, summary=summary, repo_id=repo_id),
         encoding="utf-8",
     )
 
@@ -413,7 +578,8 @@ def upload_gguf_repo(api: HfApi, repo_id: str, private: bool, dry_run: bool) -> 
     api.create_repo(repo_id=repo_id, repo_type="model", private=private, exist_ok=True)
 
     context_length = load_context_length()
-    readme = render_gguf_card(context_length=context_length, repo_id=repo_id)
+    summary = load_training_summary()
+    readme = render_gguf_card(context_length=context_length, summary=summary, repo_id=repo_id)
     with tempfile.TemporaryDirectory(prefix="hf_publish_gguf_meta_") as tmp:
         tmp_root = Path(tmp)
         readme_path = tmp_root / "README.md"
