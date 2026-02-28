@@ -13,7 +13,7 @@ These guidelines define how AI agents should operate in this repository to keep 
 ## 2. Runtime Strategy
 
 - This project is container-first for training and packaging.
-- Standard runtime image: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`.
+- Standard runtime image: `rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1`.
 - Host exposes `/dev/kfd` and `/dev/dri`; container runtime is the reproducible baseline.
 
 ## 3. Cache Policy

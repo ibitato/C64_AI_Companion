@@ -17,7 +17,7 @@ The objective is to keep strong reasoning behavior while adding accurate, practi
 ## Architecture and Reproducibility
 
 - Training and packaging run in Docker.
-- Canonical training image: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`.
+- Canonical training image: `rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1`.
 - Canonical base model path: `models/Ministral-3-8B-Thinking`.
 - Project-local cache: `.cache/huggingface`.
 

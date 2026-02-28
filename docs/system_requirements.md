@@ -10,8 +10,8 @@
 
 ## Container Runtime Baseline
 
-- Training image: `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1`
-- Python: 3.10
+- Training image: `rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1`
+- Python: 3.12
 - Dependency lock strategy:
   - `requirements.base.txt`
   - `requirements.rocm72.txt`

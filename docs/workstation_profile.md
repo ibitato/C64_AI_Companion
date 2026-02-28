@@ -20,7 +20,7 @@ Document the fine-tuning workstation used for this project and clearly define th
 | --- | --- | --- | --- |
 | Host kernel/driver layer | Device access and kernel-side GPU support | Fedora 43 + Linux 6.18.8 | Provides `/dev/kfd` and `/dev/dri` to containers |
 | Host Python runtime (local) | Local utility context only | torch `2.9.1+rocm6.4`, HIP `6.4.x` | Not the canonical training runtime |
-| Container runtime (canonical) | Training, data pipeline, packaging | `rocm/pytorch:rocm7.2_ubuntu22.04_py3.10_pytorch_release_2.9.1` | Source of truth for reproducible training |
+| Container runtime (canonical) | Training, data pipeline, packaging | `rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1` | Source of truth for reproducible training |
 
 ## Strix Halo Compatibility Policy
 
