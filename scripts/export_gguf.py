@@ -13,27 +13,14 @@ from peft import PeftModel
 from transformers import AutoConfig, AutoTokenizer
 from transformers.models.mistral3 import Mistral3ForConditionalGeneration
 
+try:
+    from prompt_contract import build_c64_system_prompt
+except ImportError:  # pragma: no cover - import path differs under test runner
+    from scripts.prompt_contract import build_c64_system_prompt
+
 
 ALLOWED_BASE_MODEL = Path("models/Ministral-3-8B-Thinking")
 LLAMA_CPP_REPO = "https://github.com/ggml-org/llama.cpp"
-SYSTEM_PROMPT = (
-    "# HOW YOU SHOULD THINK AND ANSWER\n\n"
-    "First draft your thinking process (inner monologue) until you arrive at a response. "
-    "Use this format when reasoning is needed:\n"
-    "[THINK]brief technical reasoning[/THINK]\n"
-    "Then provide a clear final answer.\n\n"
-    "You are a specialized Commodore 64 technical assistant.\n\n"
-    "Scope:\n"
-    "- Only answer Commodore 64 and directly related topics: C64 hardware specs, "
-    "memory map, VIC-II, SID, CIA, KERNAL, BASIC V2, 6502/6510 machine language, "
-    "programming, debugging, and emulation.\n\n"
-    "Behavior:\n"
-    "- Be concise, precise, and polite.\n"
-    "- Give enough detail to be useful; avoid one-word answers.\n"
-    "- If a request is outside scope, say it briefly and ask for a C64-focused question.\n"
-    "- If information is uncertain, state uncertainty and avoid guessing.\n"
-    "- Respond in the same language as the user."
-)
 
 
 def run(cmd: list[str], *, dry_run: bool = False) -> None:
@@ -234,10 +221,10 @@ def ensure_llama_quantize_binary(*, llama_cpp_dir: Path, dry_run: bool) -> Path:
     return quantize_bin
 
 
-def write_modelfile(*, gguf_dir: Path, model_file: Path, dry_run: bool) -> None:
+def write_modelfile(*, gguf_dir: Path, model_file: Path, system_prompt: str, dry_run: bool) -> None:
     """Write Ollama Modelfile pointing at the selected GGUF artifact."""
     modelfile_path = gguf_dir / "Modelfile"
-    contents = f'FROM ./{model_file.name}\nSYSTEM """{SYSTEM_PROMPT}"""\n'
+    contents = f'FROM ./{model_file.name}\nSYSTEM """{system_prompt}"""\n'
     if dry_run:
         print(f"[dry-run] Would write {modelfile_path} with:")
         print(contents.rstrip())
@@ -265,6 +252,7 @@ def main() -> None:
     args = parse_args()
 
     base_model_path = resolve_allowed_base_model(args.base_model_path)
+    system_prompt = build_c64_system_prompt(base_model_path)
     adapter_path = Path(args.adapter_path).resolve()
     merged_model_dir = Path(args.merged_model_dir).resolve()
     gguf_dir = Path(args.gguf_dir).resolve()
@@ -355,7 +343,12 @@ def main() -> None:
         )
 
     if not args.no_modelfile:
-        write_modelfile(gguf_dir=gguf_dir, model_file=final_gguf, dry_run=args.dry_run)
+        write_modelfile(
+            gguf_dir=gguf_dir,
+            model_file=final_gguf,
+            system_prompt=system_prompt,
+            dry_run=args.dry_run,
+        )
 
     if args.clean_merged:
         if args.dry_run:

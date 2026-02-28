@@ -2,7 +2,10 @@
 
 ## Objective
 
-Fine-tune a reasoning-capable Ministral 3 8B base model on technical C64 data using a two-phase workflow.
+Fine-tune Ministral 3 8B Reasoning on technical C64 data while preserving a stable visible reasoning format:
+
+- `[THINK]...[/THINK]`
+- Final answer after `[/THINK]`
 
 ## Recommended Recipe
 
@@ -15,17 +18,21 @@ Fine-tune a reasoning-capable Ministral 3 8B base model on technical C64 data us
 - Learning rate: `2e-5`
 - Epochs: `3`
 - `assistant_only_loss`: enabled
+- `strict_assistant_only_loss`: enabled
+- Chat template override: `scripts/templates/mistral3_chat_template_assistant_mask.jinja`
 
-## System Prompt Used in SFT Data
+## Prompt and Template Contract
 
-The SFT generator now injects a constrained C64-specialist system prompt that:
+- The base model official prompt is loaded from `models/Ministral-3-8B-Thinking/SYSTEM_PROMPT.txt`.
+- Project C64 specialization is appended (not replacing base prompt).
+- Shared contract source:
+  - `scripts/prompt_contract.py`
+  - `docs/specs/reasoning_contract.md`
 
-- preserves explicit reasoning mode via `[THINK]...[/THINK]` when needed,
-- restricts scope to Commodore 64 and directly related topics,
-- enforces concise and polite answers without collapsing to one-word replies,
-- requests explicit uncertainty when needed,
-- asks for C64-focused reformulation when a request is out of scope,
-- keeps responses in the user's language.
+SFT uses a custom chat template with generation mask blocks so `assistant_only_loss` is enforced correctly:
+
+- `{% generation %}`
+- `{% endgeneration %}`
 
 ## Commands
 
@@ -51,6 +58,8 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --output-dir models/fine-tuned-sft \
   --precision bf16 \
   --assistant-only-loss \
+  --strict-assistant-only-loss \
+  --chat-template-path scripts/templates/mistral3_chat_template_assistant_mask.jinja \
   --no-packing \
   --use-lora
 ```
@@ -67,10 +76,13 @@ docker compose run --rm trainer bash scripts/container/train.sh
 - Artifacts are written under `models/`.
 - Training logs and checkpoints are present.
 - Post-training tests pass.
+- `assistant_only_loss` remains enabled in saved training args.
+- Reasoning contract validation passes in runtime checks.
 
 ## Risk Signals
 
 - Validation split empty.
 - Loss divergence or NaNs.
 - GPU backend instability.
-- Low THINK coverage reported in `data/processed/validation_report.json`.
+- Low THINK coverage or low THINK diversity in `data/processed/validation_report.json`.
+- Missing generation mask blocks in chat template.

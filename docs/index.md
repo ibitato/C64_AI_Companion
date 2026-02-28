@@ -14,6 +14,7 @@
 - `fine_tuning_playbook.md`
 - `inference_gguf_ollama_llamacpp.md`
 - `release_huggingface.md`
+- `specs/reasoning_contract.md`
 
 ## Operational Manuals
 

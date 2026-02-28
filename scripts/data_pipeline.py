@@ -36,6 +36,11 @@ import pypdf
 from bs4 import BeautifulSoup
 from transformers import AutoTokenizer
 
+try:
+    from prompt_contract import build_c64_system_prompt, choose_reasoning_trace
+except ImportError:  # pragma: no cover - import path differs under test runner
+    from scripts.prompt_contract import build_c64_system_prompt, choose_reasoning_trace
+
 
 DEFAULT_SOURCE_DIR = Path("c64_docs")
 DEFAULT_MODEL_PATH = Path("models/Ministral-3-8B-Thinking")
@@ -50,25 +55,6 @@ DEDUP_PATH = INTERIM_DIR / "dedup" / "pages_dedup.parquet"
 DUPLICATES_PATH = INTERIM_DIR / "dedup" / "duplicates.parquet"
 
 VALIDATION_REPORT_PATH = PROCESSED_DIR / "validation_report.json"
-
-C64_SYSTEM_PROMPT = (
-    "# HOW YOU SHOULD THINK AND ANSWER\n\n"
-    "First draft your thinking process (inner monologue) until you arrive at a response. "
-    "Use this format when reasoning is needed:\n"
-    "[THINK]brief technical reasoning[/THINK]\n"
-    "Then provide a clear final answer.\n\n"
-    "You are a specialized Commodore 64 technical assistant.\n\n"
-    "Scope:\n"
-    "- Only answer Commodore 64 and directly related topics: C64 hardware specs, "
-    "memory map, VIC-II, SID, CIA, KERNAL, BASIC V2, 6502/6510 machine language, "
-    "programming, debugging, and emulation.\n\n"
-    "Behavior:\n"
-    "- Be concise, precise, and polite.\n"
-    "- Give enough detail to be useful; avoid one-word answers.\n"
-    "- If a request is outside scope, say it briefly and ask for a C64-focused question.\n"
-    "- If information is uncertain, state uncertainty and avoid guessing.\n"
-    "- Respond in the same language as the user."
-)
 
 
 def log(msg: str) -> None:
@@ -650,7 +636,19 @@ def assistant_has_think_tags(content: str) -> bool:
     """Return True when assistant content contains a well-ordered THINK block."""
     start = content.find("[THINK]")
     end = content.find("[/THINK]")
-    return start >= 0 and end > start
+    if start < 0 or end <= start:
+        return False
+    think_body = content[start + len("[THINK]") : end].strip()
+    return bool(think_body)
+
+
+def extract_think_content(content: str) -> str:
+    """Extract normalized THINK payload from an assistant message."""
+    start = content.find("[THINK]")
+    end = content.find("[/THINK]")
+    if start < 0 or end <= start:
+        return ""
+    return re.sub(r"\s+", " ", content[start + len("[THINK]") : end]).strip()
 
 
 def format_assistant_with_think(reasoning: str, final_answer: str) -> str:
@@ -660,6 +658,18 @@ def format_assistant_with_think(reasoning: str, final_answer: str) -> str:
     if not compact_reasoning:
         compact_reasoning = "I extract the relevant C64 technical details before answering."
     return f"[THINK]{compact_reasoning}[/THINK]\n{compact_final}"
+
+
+def compact_bullets(summary: str, max_items: int = 3) -> str:
+    """Reduce long summaries into short actionable bullets."""
+    lines = [ln.strip() for ln in summary.splitlines() if ln.strip()]
+    bullets = [ln for ln in lines if ln.startswith("- ")]
+    selected = bullets[:max_items] if bullets else lines[:max_items]
+    out: list[str] = []
+    for ln in selected:
+        item = ln[2:] if ln.startswith("- ") else ln
+        out.append(f"- {item}")
+    return "\n".join(out)
 
 
 _LOW_SIGNAL_SFT_PATTERNS = re.compile(
@@ -714,8 +724,9 @@ def extract_address_context_lines(text: str, addresses: list[str], max_items: in
 def stage_build_sft(
     dedup_path: Path,
     sft_dir: Path,
+    model_path: Path,
     seed: int,
-    max_examples_per_page: int = 2,
+    max_examples_per_page: int = 3,
 ) -> pd.DataFrame:
     """Build SFT JSONL examples from deduplicated normalized pages."""
     df = pd.read_parquet(dedup_path)
@@ -726,7 +737,7 @@ def stage_build_sft(
         return pd.DataFrame(columns=["id", "doc_id", "messages", "source_refs", "quality_score", "split"])
 
     split_map = assign_doc_splits(df["doc_id"].tolist(), seed=seed, train_ratio=0.8, val_ratio=0.1)
-    system_msg = C64_SYSTEM_PROMPT
+    system_msg = build_c64_system_prompt(model_path)
 
     rows: list[dict[str, Any]] = []
     for rec in df.sort_values(["doc_id", "page_number"]).to_dict(orient="records"):
@@ -742,6 +753,7 @@ def stage_build_sft(
         refs = [{"source_file": rec["source_file"], "page_number": int(rec["page_number"])}]
 
         # Example 1: explanation-style
+        reasoning_1 = choose_reasoning_trace(f"{rec['id']}:sft-1", task="extract key C64 facts")
         rows.append(
             {
                 "id": f"{rec['id']}:sft-1",
@@ -758,7 +770,7 @@ def stage_build_sft(
                     {
                         "role": "assistant",
                         "content": format_assistant_with_think(
-                            "I extract the main C64 technical facts from the excerpt and keep only the most useful points.",
+                            reasoning_1,
                             "Here are the key technical points:\n"
                             f"{summary}",
                         ),
@@ -777,6 +789,10 @@ def stage_build_sft(
                 mention = ", ".join(addresses[:8])
                 context_lines = extract_address_context_lines(excerpt, addresses)
                 context_block = "\n".join(context_lines) if context_lines else "- Context not found."
+                reasoning_2 = choose_reasoning_trace(
+                    f"{rec['id']}:sft-2",
+                    task="map memory addresses to C64 usage",
+                )
                 rows.append(
                     {
                         "id": f"{rec['id']}:sft-2",
@@ -794,7 +810,7 @@ def stage_build_sft(
                             {
                                 "role": "assistant",
                                 "content": format_assistant_with_think(
-                                    "I identify explicit memory addresses in the excerpt and map each one to nearby wording before summarizing use.",
+                                    reasoning_2,
                                     f"Memory addresses explicitly mentioned: {mention}\n\n"
                                     "Usage context in the excerpt:\n"
                                     f"{context_block}",
@@ -806,6 +822,67 @@ def stage_build_sft(
                         "split": split_map[rec["doc_id"]],
                     }
                 )
+
+        # Example 3: multi-turn follow-up to improve reasoning-format retention in chat.
+        if max_examples_per_page > 2:
+            concise = compact_bullets(summary, max_items=3)
+            addresses = sorted(set(re.findall(r"\$[0-9A-Fa-f]{4}", excerpt)))
+            addr_note = (
+                f"Explicit address from this excerpt: {addresses[0]}"
+                if addresses
+                else "No explicit memory address appears in this excerpt."
+            )
+            reasoning_3a = choose_reasoning_trace(
+                f"{rec['id']}:sft-3:a",
+                task="summarize and keep only practical C64 details",
+            )
+            reasoning_3b = choose_reasoning_trace(
+                f"{rec['id']}:sft-3:b",
+                task="refine answer into actionable guidance",
+            )
+            rows.append(
+                {
+                    "id": f"{rec['id']}:sft-3",
+                    "doc_id": rec["doc_id"],
+                    "messages": [
+                        {"role": "system", "content": system_msg},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Summarize this C64 excerpt and highlight practical details:\n\n"
+                                f"{excerpt}"
+                            ),
+                        },
+                        {
+                            "role": "assistant",
+                            "content": format_assistant_with_think(
+                                reasoning_3a,
+                                "Practical summary:\n"
+                                f"{summary}",
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": (
+                                "Now rewrite that as up to 3 concise actionable bullets for a C64 developer. "
+                                "Include one explicit memory/register note only if present."
+                            ),
+                        },
+                        {
+                            "role": "assistant",
+                            "content": format_assistant_with_think(
+                                reasoning_3b,
+                                "Actionable C64 checklist:\n"
+                                f"{concise}\n\n"
+                                f"{addr_note}",
+                            ),
+                        },
+                    ],
+                    "source_refs": refs,
+                    "quality_score": rec["quality_score"],
+                    "split": split_map[rec["doc_id"]],
+                }
+            )
 
     out = pd.DataFrame(rows)
     sft_dir.mkdir(parents=True, exist_ok=True)
@@ -829,12 +906,17 @@ def collect_sft_thinking_stats(sft_dir: Path) -> dict[str, Any]:
     split_stats: dict[str, dict[str, Any]] = {}
     assistant_total = 0
     assistant_with_think_total = 0
+    conversations_total = 0
+    conversations_multiturn = 0
+    think_text_counts: dict[str, int] = {}
     bad_json_lines = 0
 
     for split in ("train", "validation", "test"):
         path = sft_dir / f"{split}.jsonl"
         assistant_messages = 0
         assistant_with_think = 0
+        split_conversations = 0
+        split_multiturn = 0
         if path.exists():
             with path.open("r", encoding="utf-8") as f:
                 for raw in f:
@@ -846,29 +928,50 @@ def collect_sft_thinking_stats(sft_dir: Path) -> dict[str, Any]:
                     except json.JSONDecodeError:
                         bad_json_lines += 1
                         continue
+                    split_conversations += 1
+                    assistant_in_sample = 0
                     for msg in rec.get("messages", []):
                         if msg.get("role") != "assistant":
                             continue
+                        assistant_in_sample += 1
                         assistant_messages += 1
                         content = msg.get("content", "")
                         if isinstance(content, str) and assistant_has_think_tags(content):
                             assistant_with_think += 1
+                            think = extract_think_content(content)
+                            if think:
+                                think_text_counts[think] = think_text_counts.get(think, 0) + 1
+                    if assistant_in_sample > 1:
+                        split_multiturn += 1
 
         ratio = float(assistant_with_think / assistant_messages) if assistant_messages else 0.0
+        multiturn_ratio = float(split_multiturn / split_conversations) if split_conversations else 0.0
         split_stats[split] = {
             "assistant_messages": assistant_messages,
             "assistant_with_think": assistant_with_think,
             "assistant_with_think_ratio": round(ratio, 4),
+            "conversations": split_conversations,
+            "conversations_with_multiple_assistant_turns": split_multiturn,
+            "multi_turn_ratio": round(multiturn_ratio, 4),
         }
         assistant_total += assistant_messages
         assistant_with_think_total += assistant_with_think
+        conversations_total += split_conversations
+        conversations_multiturn += split_multiturn
 
     total_ratio = float(assistant_with_think_total / assistant_total) if assistant_total else 0.0
+    multiturn_ratio_total = float(conversations_multiturn / conversations_total) if conversations_total else 0.0
+    top_think = sorted(think_text_counts.items(), key=lambda kv: kv[1], reverse=True)[:8]
     return {
         "splits": split_stats,
         "assistant_messages_total": assistant_total,
         "assistant_with_think_total": assistant_with_think_total,
         "assistant_with_think_ratio": round(total_ratio, 4),
+        "unique_think_texts": len(think_text_counts),
+        "top_think_texts": [{"text": k, "count": v} for k, v in top_think],
+        "conversations_total": conversations_total,
+        "conversations_with_multiple_assistant_turns": conversations_multiturn,
+        "multi_turn_ratio": round(multiturn_ratio_total, 4),
         "bad_json_lines": bad_json_lines,
     }
 
@@ -879,6 +982,7 @@ def stage_validate(
     dapt_dir: Path,
     sft_dir: Path,
     report_path: Path,
+    strict_thinking_contract: bool = True,
 ) -> dict[str, Any]:
     """Generate dataset quality checks and a machine-readable validation report."""
     report: dict[str, Any] = {
@@ -935,8 +1039,14 @@ def stage_validate(
     if sft_total < 50:
         warnings.append("Low SFT example count (<50).")
     thinking_ratio = float(sft_thinking.get("assistant_with_think_ratio", 0.0))
-    if sft_total > 0 and thinking_ratio < 0.90:
-        warnings.append("Low THINK-tag coverage in assistant SFT targets (<90%).")
+    if sft_total > 0 and thinking_ratio < 0.995:
+        warnings.append("THINK contract failure: assistant THINK-tag coverage is below 99.5%.")
+    think_diversity = int(sft_thinking.get("unique_think_texts", 0))
+    if sft_total > 0 and think_diversity < 8:
+        warnings.append("Low THINK trace diversity (<8 unique reasoning traces).")
+    multiturn_ratio = float(sft_thinking.get("multi_turn_ratio", 0.0))
+    if sft_total > 0 and multiturn_ratio < 0.15:
+        warnings.append("Low multi-turn SFT coverage (<15% conversations with >1 assistant turn).")
     bad_json_lines = int(sft_thinking.get("bad_json_lines", 0))
     if bad_json_lines > 0:
         warnings.append(f"SFT JSONL parse issues detected ({bad_json_lines} bad lines).")
@@ -945,6 +1055,10 @@ def stage_validate(
 
     write_json(report_path, report)
     log(f"validation report -> {report_path}")
+    if strict_thinking_contract and not report["ok"]:
+        raise RuntimeError(
+            "Validation failed under strict thinking contract:\n- " + "\n- ".join(warnings)
+        )
     return report
 
 
@@ -968,6 +1082,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--block-size", type=int, default=2048)
     parser.add_argument("--stride", type=int, default=256)
     parser.add_argument("--min-chunk-tokens", type=int, default=512)
+    parser.add_argument("--max-examples-per-page", type=int, default=3)
+    parser.add_argument("--strict-thinking-contract", action="store_true", default=True)
+    parser.add_argument("--no-strict-thinking-contract", dest="strict_thinking_contract", action="store_false")
     return parser.parse_args()
 
 
@@ -1007,7 +1124,9 @@ def run(args: argparse.Namespace) -> None:
         stage_build_sft(
             dedup_path=DEDUP_PATH,
             sft_dir=PROCESSED_DIR / "sft",
+            model_path=args.model_path,
             seed=args.seed,
+            max_examples_per_page=args.max_examples_per_page,
         )
 
     if args.stage in ("validate", "all"):
@@ -1017,6 +1136,7 @@ def run(args: argparse.Namespace) -> None:
             dapt_dir=PROCESSED_DIR / "dapt",
             sft_dir=PROCESSED_DIR / "sft",
             report_path=VALIDATION_REPORT_PATH,
+            strict_thinking_contract=args.strict_thinking_contract,
         )
 
 

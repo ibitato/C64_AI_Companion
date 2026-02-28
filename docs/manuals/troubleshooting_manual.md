@@ -55,3 +55,23 @@ Actions:
 1. Ensure `sentencepiece` is installed in runtime.
 2. Rebuild/validate `llama.cpp` toolchain.
 3. Re-run export from clean merged model output.
+
+## 5) Thinking Is Intermittent or Missing in GUI
+
+Symptoms:
+
+- `[THINK]...[/THINK]` appears in some turns but not others.
+- Reasoning panel appears for 1-2 interactions and then disappears.
+
+Checks:
+
+```bash
+bash scripts/inference/validate_reasoning_behavior.sh
+```
+
+Actions:
+
+1. Confirm runtime uses contract-preserving mode (`--reasoning-format none`).
+2. Rebuild SFT data and verify `validation_report.json` THINK metrics.
+3. Confirm training used generation-mask template and `assistant_only_loss=True`.
+4. Re-export GGUF and regenerate Modelfiles from `prepare_runtime_assets.sh`.

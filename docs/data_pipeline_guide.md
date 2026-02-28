@@ -21,6 +21,16 @@ Prepare a clean and auditable C64 dataset for DAPT and SFT from source manuals i
 docker compose run --rm trainer bash scripts/container/pipeline.sh
 ```
 
+Manual run with explicit contract flags:
+
+```bash
+python scripts/data_pipeline.py \
+  --stage all \
+  --allow-ocr \
+  --max-examples-per-page 3 \
+  --strict-thinking-contract
+```
+
 ## Expected Outputs
 
 - `data/interim/manifest/manifest.parquet`
@@ -47,4 +57,9 @@ python scripts/data_qc_report.py \
 - Base model tokenizer path is policy-restricted to `models/Ministral-3-8B-Thinking`.
 - OCR is enabled in container pipeline execution.
 - SFT generation filters low-signal boilerplate pages (for example: table-of-contents and copyright pages) and very noisy pages before creating chat examples.
-- Validation now tracks THINK-tag coverage in assistant SFT targets to catch reasoning-format regressions before training.
+- SFT now includes multi-turn examples to improve format retention during chat.
+- Validation tracks:
+  - THINK-tag coverage
+  - THINK diversity (`unique_think_texts`)
+  - multi-turn coverage
+- In strict mode, validation fails the pipeline if the reasoning contract is broken.

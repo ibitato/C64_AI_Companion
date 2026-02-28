@@ -10,6 +10,7 @@ PROMPT="${2:-Briefly explain what the Commodore 64 SID chip does.}"
 shift || true
 shift || true
 EXTRA_ARGS=("$@")
+SINGLE_TURN=1
 
 # Normalize short aliases to canonical quantization names.
 case "${QUANT^^}" in
@@ -38,11 +39,34 @@ fi
 echo "Using model: ${MODEL_PATH}"
 echo "Executable: ${LLAMA_BIN}"
 
+filtered_args=()
+for arg in "${EXTRA_ARGS[@]}"; do
+  case "${arg}" in
+    --multi-turn)
+      SINGLE_TURN=0
+      ;;
+    --single-turn)
+      SINGLE_TURN=1
+      ;;
+    *)
+      filtered_args+=("${arg}")
+      ;;
+  esac
+done
+EXTRA_ARGS=("${filtered_args[@]}")
+
 set_n_predict=1
+set_reasoning_format=1
+set_reasoning_budget=1
 for arg in "${EXTRA_ARGS[@]}"; do
   if [[ "${arg}" == "-n" || "${arg}" == "--predict" || "${arg}" == "--n-predict" ]]; then
     set_n_predict=0
-    break
+  fi
+  if [[ "${arg}" == "--reasoning-format" ]]; then
+    set_reasoning_format=0
+  fi
+  if [[ "${arg}" == "--reasoning-budget" ]]; then
+    set_reasoning_budget=0
   fi
 done
 
@@ -50,13 +74,24 @@ cmd=(
   "${LLAMA_BIN}"
   -m "${MODEL_PATH}"
   -ngl 99
-  -st
   -c 4096
   -p "${PROMPT}"
 )
 
+if [[ "${SINGLE_TURN}" -eq 1 ]]; then
+  cmd+=(-st)
+fi
+
 if [[ "${set_n_predict}" -eq 1 ]]; then
   cmd+=(-n 256)
+fi
+
+if [[ "${set_reasoning_format}" -eq 1 ]]; then
+  cmd+=(--reasoning-format "${LLAMA_REASONING_FORMAT:-none}")
+fi
+
+if [[ "${set_reasoning_budget}" -eq 1 ]]; then
+  cmd+=(--reasoning-budget "${LLAMA_REASONING_BUDGET:--1}")
 fi
 
 cmd+=("${EXTRA_ARGS[@]}")

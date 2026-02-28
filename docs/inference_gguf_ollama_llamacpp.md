@@ -41,6 +41,29 @@ bash scripts/inference/create_ollama_models.sh
 bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain VIC-II badlines in concise terms."
 ```
 
+Notes:
+
+- The wrapper defaults to `--reasoning-format none` to keep raw `[THINK]...[/THINK]` output visible.
+- Use `--multi-turn` to disable the single-turn shortcut (`-st`) and keep interactive context.
+
+Example:
+
+```bash
+bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID ADSR in brief." --multi-turn --simple-io
+```
+
+## Validate Reasoning Contract (Reproducible)
+
+```bash
+bash scripts/inference/validate_reasoning_behavior.sh
+```
+
+Outputs:
+
+- `results/reasoning_validation/<timestamp>/metrics.csv`
+- `results/reasoning_validation/<timestamp>/summary.md`
+- `results/reasoning_validation/<timestamp>/raw/*.log`
+
 ## Benchmark GGUF Variants (Reproducible)
 
 ```bash

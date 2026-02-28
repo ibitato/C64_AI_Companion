@@ -15,6 +15,8 @@ Authoritative targets:
 - `HF_TOKEN` available in local `.env` (write permission).
 - Trained adapter artifacts exist in `models/fine-tuned`.
 - GGUF artifacts exist in `models/gguf`.
+- Reasoning contract validation passed:
+  - `bash scripts/inference/validate_reasoning_behavior.sh`
 
 ## Publish Command
 

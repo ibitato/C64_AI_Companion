@@ -36,7 +36,13 @@ docker compose run --rm trainer bash scripts/container/pipeline.sh
 docker compose run --rm trainer bash scripts/container/train.sh
 ```
 
-### 5) Run tests
+### 5) Validate reasoning behavior on exported runtime artifacts
+
+```bash
+docker compose run --rm trainer bash scripts/inference/validate_reasoning_behavior.sh --in-container
+```
+
+### 6) Run tests
 
 ```bash
 docker compose run --rm trainer pytest -q
@@ -53,6 +59,8 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --output-dir models/fine-tuned \
   --precision bf16 \
   --assistant-only-loss \
+  --strict-assistant-only-loss \
+  --chat-template-path scripts/templates/mistral3_chat_template_assistant_mask.jinja \
   --no-packing \
   --use-lora
 ```
@@ -63,6 +71,7 @@ docker compose run --rm trainer bash scripts/container/train.sh \
 - Final SFT output in target `models/*` path.
 - Training checkpoints under the selected output directory.
 - Data validation report includes SFT THINK coverage under `checks.sft_thinking`.
+- Reasoning validation report is written under `results/reasoning_validation/`.
 
 ## Failure Modes
 

@@ -27,6 +27,7 @@ from transformers import (
 from trl import SFTConfig, SFTTrainer
 
 CANONICAL_MODEL_PATH = Path("models/Ministral-3-8B-Thinking").resolve()
+DEFAULT_CHAT_TEMPLATE_PATH = Path("scripts/templates/mistral3_chat_template_assistant_mask.jinja")
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,6 +71,13 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--assistant-only-loss", action="store_true", default=True)
     parser.add_argument("--no-assistant-only-loss", dest="assistant_only_loss", action="store_false")
+    parser.add_argument("--strict-assistant-only-loss", action="store_true", default=True)
+    parser.add_argument(
+        "--no-strict-assistant-only-loss",
+        dest="strict_assistant_only_loss",
+        action="store_false",
+    )
+    parser.add_argument("--chat-template-path", default=str(DEFAULT_CHAT_TEMPLATE_PATH))
     parser.add_argument("--packing", action="store_true", default=False)
     parser.add_argument("--no-packing", dest="packing", action="store_false")
     parser.add_argument("--allow-cpu", action="store_true", help="Allow CPU fallback (debug only).")
@@ -150,6 +158,17 @@ def load_base_model_and_tokenizer(model_path: str, device: str, dtype: torch.dty
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     return model, tokenizer
+
+
+def apply_chat_template_override(tokenizer: AutoTokenizer, template_path: str) -> tuple[bool, str]:
+    """Load a project-owned chat template and attach it to the tokenizer."""
+    path = Path(template_path).resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Chat template override not found: {path}")
+    template = path.read_text(encoding="utf-8")
+    tokenizer.chat_template = template
+    has_generation_blocks = "{% generation %}" in template and "{% endgeneration %}" in template
+    return has_generation_blocks, str(path)
 
 
 def _data_files(base_dir: str, extension: str) -> dict[str, str]:
@@ -404,14 +423,31 @@ def run_sft_phase(
     print("=== SFT phase ===")
     model, tokenizer = load_base_model_and_tokenizer(model_path, device=device, dtype=dtype)
 
-    if args.assistant_only_loss:
+    generation_blocks_present = False
+    chat_template_source = "tokenizer_default"
+    if args.chat_template_path:
+        generation_blocks_present, chat_template_source = apply_chat_template_override(
+            tokenizer,
+            args.chat_template_path,
+        )
+    else:
         chat_template = tokenizer.chat_template or ""
-        if "{% generation %}" not in chat_template:
-            print(
-                "assistant_only_loss requested, but tokenizer chat template does not expose "
-                "{% generation %} mask blocks. Disabling assistant_only_loss for this run."
-            )
-            args.assistant_only_loss = False
+        generation_blocks_present = "{% generation %}" in chat_template and "{% endgeneration %}" in chat_template
+
+    print(
+        f"Chat template source={chat_template_source}, "
+        f"generation_blocks={generation_blocks_present}"
+    )
+
+    if args.assistant_only_loss and not generation_blocks_present:
+        msg = (
+            "assistant_only_loss requires a chat template containing "
+            "{% generation %}...{% endgeneration %} blocks."
+        )
+        if args.strict_assistant_only_loss:
+            raise ValueError(msg)
+        print(f"{msg} Disabling assistant_only_loss for this run.")
+        args.assistant_only_loss = False
 
     if adapter_path:
         model = maybe_attach_adapter(model, adapter_path)

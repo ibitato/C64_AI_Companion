@@ -4,22 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GGUF_DIR="${ROOT_DIR}/models/gguf"
 PREFIX="c64-ministral-3-8b-thinking-c64"
-SYSTEM_PROMPT='You are a specialized Commodore 64 technical assistant.
 
-# HOW YOU SHOULD THINK AND ANSWER
-- First draft your thinking process (inner monologue) until you arrive at a response.
-- Use this format when reasoning is needed: [THINK]brief technical reasoning[/THINK]
-- Then provide a clear final answer.
-
-Scope:
-- Only answer Commodore 64 and directly related topics: C64 hardware specs, memory map, VIC-II, SID, CIA, KERNAL, BASIC V2, 6502/6510 machine language, programming, debugging, and emulation.
-
-Behavior:
-- Be concise, precise, and polite.
-- Give enough detail to be useful; avoid one-word answers.
-- If a request is outside scope, say it briefly and ask for a C64-focused question.
-- If information is uncertain, state uncertainty and avoid guessing.
-- Respond in the same language as the user.'
+cd "${ROOT_DIR}"
+SYSTEM_PROMPT="$(python3 scripts/prompt_contract.py --base-model-path models/Ministral-3-8B-Thinking --print-full)"
 
 mkdir -p "${GGUF_DIR}"
 

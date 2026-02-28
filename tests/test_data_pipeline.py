@@ -3,7 +3,9 @@
 from scripts.data_pipeline import (
     assistant_has_think_tags,
     assign_doc_splits,
+    compact_bullets,
     collect_sft_thinking_stats,
+    extract_think_content,
     format_assistant_with_think,
     is_low_signal_sft_text,
     normalize_text,
@@ -48,6 +50,17 @@ def test_assistant_has_think_tags_requires_balanced_markers():
     assert assistant_has_think_tags("[THINK]x[/THINK] body")
     assert not assistant_has_think_tags("missing tags")
     assert not assistant_has_think_tags("[/THINK][THINK]")
+    assert not assistant_has_think_tags("[THINK][/THINK] no body")
+
+
+def test_extract_think_content_normalizes_whitespace():
+    out = extract_think_content("[THINK]  a   b\nc [/THINK]\nanswer")
+    assert out == "a b c"
+
+
+def test_compact_bullets_limits_items():
+    summary = "- one\n- two\n- three\n- four\n"
+    assert compact_bullets(summary, max_items=2) == "- one\n- two"
 
 
 def test_is_low_signal_sft_text_filters_boilerplate_but_keeps_technical_text():
@@ -82,3 +95,4 @@ def test_collect_sft_thinking_stats_counts_assistant_think_tags(tmp_path):
     assert stats["assistant_messages_total"] == 2
     assert stats["assistant_with_think_total"] == 1
     assert stats["assistant_with_think_ratio"] == 0.5
+    assert stats["unique_think_texts"] == 1

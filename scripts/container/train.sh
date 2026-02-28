@@ -20,5 +20,7 @@ python scripts/fine_tune_mistral_8b.py \
   --output-dir models/fine-tuned \
   --precision bf16 \
   --assistant-only-loss \
+  --strict-assistant-only-loss \
+  --chat-template-path scripts/templates/mistral3_chat_template_assistant_mask.jinja \
   --no-packing \
   --use-lora

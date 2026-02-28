@@ -10,6 +10,7 @@ The objective is to keep strong reasoning behavior while adding accurate, practi
 
 - It is a container-first training and packaging workflow for one controlled base model.
 - It is a reproducible engineering pipeline for dataset preparation, DAPT/SFT fine-tuning, and GGUF export.
+- It enforces a visible reasoning contract: `[THINK]...[/THINK]` followed by final answer.
 - It is not a generic multi-model framework.
 - It does not use user-global model caches as authoritative model paths.
 
@@ -79,7 +80,13 @@ docker compose run --rm trainer bash scripts/container/export_gguf.sh \
 bash scripts/inference/quantize_additional_gguf.sh
 ```
 
-8. Reproducible GGUF benchmark matrix (container-run, CSV output):
+8. Validate reasoning contract (single-turn + multi-turn):
+
+```bash
+bash scripts/inference/validate_reasoning_behavior.sh
+```
+
+9. Reproducible GGUF benchmark matrix (container-run, CSV output):
 
 ```bash
 bash scripts/inference/benchmark_gguf_matrix.sh
@@ -96,7 +103,7 @@ bash scripts/inference/create_ollama_models.sh
 - llama.cpp helper:
 
 ```bash
-bash scripts/inference/run_llama_cpp.sh Q6_K "Explain SID voices in two concise points."
+bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID voices in two concise points."
 ```
 
 - Benchmark all GGUF variants and write `results/benchmarks/*.csv`:
@@ -139,6 +146,8 @@ C64_AI_Companion/
 ## Documentation Index
 
 Start at `docs/index.md`.
+
+See `docs/specs/reasoning_contract.md` for the authoritative reasoning/output contract.
 
 ## Security and Model Policy
 
