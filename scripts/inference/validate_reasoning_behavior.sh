@@ -5,11 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RESULTS_DIR="${ROOT_DIR}/results/reasoning_validation"
 IN_CONTAINER=0
 
-MODELS="Q8_0 F16"
+MODELS="F16 Q4_K_M"
 SEEDS="11 22 33"
 N_PREDICT=192
 CTX_SIZE=4096
 OUTPUT_DIR=""
+REASONING_FORMAT="${REASONING_FORMAT:-none}"
+TIMEOUT_SEC="${TIMEOUT_SEC:-240}"
 
 PROMPT_SINGLE="Explain VIC-II badlines in 3 concise technical bullets."
 PROMPT_MULTI_1="Explain what the SID ADSR envelope does in concise technical terms."
@@ -27,10 +29,12 @@ Usage:
 
 Options:
   --in-container           Internal flag used by docker wrapper.
-  --models "LIST"          Space-separated quant list. Default: "Q8_0 F16"
+  --models "LIST"          Space-separated quant list. Default: "F16 Q4_K_M"
   --seeds "LIST"           Space-separated seeds. Default: "11 22 33"
   --n-predict N            Max generated tokens. Default: 192
   --ctx-size N             Context size. Default: 4096
+  --reasoning-format FMT   llama.cpp reasoning format. Default: none
+  --timeout-sec N          Per-run timeout in seconds. Default: 240
   --output-dir DIR         Output directory. Default: results/reasoning_validation/<timestamp>
   -h, --help               Show this help.
 
@@ -62,6 +66,14 @@ while [[ $# -gt 0 ]]; do
       CTX_SIZE="${2:-}"
       shift 2
       ;;
+    --reasoning-format)
+      REASONING_FORMAT="${2:-}"
+      shift 2
+      ;;
+    --timeout-sec)
+      TIMEOUT_SEC="${2:-}"
+      shift 2
+      ;;
     --output-dir)
       OUTPUT_DIR="${2:-}"
       shift 2
@@ -88,12 +100,14 @@ if [[ "${IN_CONTAINER}" -eq 0 ]]; then
     exit 1
   fi
   compose_cmd=(
-    docker compose run --rm trainer
+    docker compose run --rm -T trainer
     bash scripts/inference/validate_reasoning_behavior.sh --in-container
     --models "$MODELS"
     --seeds "$SEEDS"
     --n-predict "$N_PREDICT"
     --ctx-size "$CTX_SIZE"
+    --reasoning-format "$REASONING_FORMAT"
+    --timeout-sec "$TIMEOUT_SEC"
   )
   if [[ -n "${OUTPUT_DIR}" ]]; then
     compose_cmd+=(--output-dir "$OUTPUT_DIR")
@@ -121,12 +135,20 @@ echo "run_type,quant,seed,log_path" > "${RUNS_FILE}"
 
 echo "Running reasoning behavior validation..."
 for quant in ${MODELS}; do
+  model_path="${ROOT_DIR}/models/gguf/c64-ministral-3-8b-thinking-c64-${quant}.gguf"
+  if [[ ! -f "${model_path}" ]]; then
+    echo "ERROR: model file missing for quant '${quant}': ${model_path}" >&2
+    exit 1
+  fi
   for seed in ${SEEDS}; do
     single_log="${RAW_DIR}/single_${quant}_seed${seed}.log"
     multi_log="${RAW_DIR}/multi_${quant}_seed${seed}.log"
 
-    bash "${ROOT_DIR}/scripts/inference/run_llama_cpp.sh" "${quant}" "${PROMPT_SINGLE}" \
-      --reasoning-format none \
+    timeout "${TIMEOUT_SEC}" bash "${ROOT_DIR}/scripts/inference/run_llama_cpp.sh" "${quant}" "${PROMPT_SINGLE}" \
+      -cnv \
+      --jinja \
+      -sp \
+      --reasoning-format "${REASONING_FORMAT}" \
       --reasoning-budget -1 \
       --temp 0 \
       --seed "${seed}" \
@@ -138,10 +160,13 @@ for quant in ${MODELS}; do
     echo "single,${quant},${seed},${single_log}" >> "${RUNS_FILE}"
 
     printf "%s\n/exit\n" "${PROMPT_MULTI_2}" | \
-      bash "${ROOT_DIR}/scripts/inference/run_llama_cpp.sh" "${quant}" "${PROMPT_MULTI_1}" \
+      timeout "${TIMEOUT_SEC}" bash "${ROOT_DIR}/scripts/inference/run_llama_cpp.sh" "${quant}" "${PROMPT_MULTI_1}" \
         --multi-turn \
+        -cnv \
+        --jinja \
+        -sp \
         --simple-io \
-        --reasoning-format none \
+        --reasoning-format "${REASONING_FORMAT}" \
         --reasoning-budget -1 \
         --temp 0 \
         --seed "${seed}" \

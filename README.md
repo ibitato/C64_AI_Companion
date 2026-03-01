@@ -106,6 +106,26 @@ bash scripts/inference/create_ollama_models.sh
 bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID voices in two concise points."
 ```
 
+- llama.cpp server (OpenAI-compatible API / GUI reasoning panel):
+
+```bash
+python3 scripts/prompt_contract.py --print-full > .cache/runtime/c64_system_prompt.txt
+./llama-server \
+  -hf ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf:F16 \
+  --host 0.0.0.0 --port 8080 \
+  --jinja \
+  --reasoning-format deepseek \
+  --reasoning-budget -1 \
+  --system-prompt-file .cache/runtime/c64_system_prompt.txt \
+  --ctx-size 32768 \
+  -ngl 99 \
+  --temp 0.15 \
+  --threads "$(nproc)" \
+  --fit on
+```
+
+Use `--reasoning-format none` if you want raw `[THINK]...[/THINK]` tags in `content` instead of GUI reasoning separation.
+
 - Benchmark all GGUF variants and write `results/benchmarks/*.csv`:
 
 ```bash

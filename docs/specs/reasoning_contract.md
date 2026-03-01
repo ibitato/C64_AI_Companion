@@ -54,6 +54,9 @@ These checks are enforced in:
 
 For local runtime (`llama.cpp` / `Ollama`):
 
+- Use chat-template mode (`-cnv --jinja`) so the Ministral THINK prompt contract is actually applied.
+- Keep special-token output enabled (`-sp`) when validating visible THINK tags.
+- Use the full project system prompt (base + C64 append) at runtime, not only the base default prompt.
 - Prefer `--reasoning-format none` to keep raw `[THINK]...[/THINK]` text visible.
 - Use deterministic settings for contract checks (fixed seed, low temperature).
 

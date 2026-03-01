@@ -11,6 +11,24 @@ shift || true
 shift || true
 EXTRA_ARGS=("$@")
 SINGLE_TURN=1
+set_chat_mode=1
+set_jinja_mode=1
+set_special_mode=1
+set_system_prompt=1
+DEFAULT_SYSTEM_PROMPT_FILE="${ROOT_DIR}/.cache/runtime/c64_system_prompt.txt"
+
+ensure_contract_system_prompt_file() {
+  local out_file="${DEFAULT_SYSTEM_PROMPT_FILE}"
+  mkdir -p "$(dirname "${out_file}")"
+  if [[ ! -s "${out_file}" || "${LLAMA_REFRESH_SYSTEM_PROMPT:-0}" == "1" ]]; then
+    python3 "${ROOT_DIR}/scripts/prompt_contract.py" --print-full > "${out_file}"
+  fi
+  if [[ ! -s "${out_file}" ]]; then
+    echo "ERROR: failed to prepare system prompt file at '${out_file}'" >&2
+    exit 1
+  fi
+  echo "${out_file}"
+}
 
 # Normalize short aliases to canonical quantization names.
 case "${QUANT^^}" in
@@ -48,6 +66,22 @@ for arg in "${EXTRA_ARGS[@]}"; do
     --single-turn)
       SINGLE_TURN=1
       ;;
+    -cnv|--conversation|-no-cnv|--no-conversation)
+      set_chat_mode=0
+      filtered_args+=("${arg}")
+      ;;
+    --jinja|--no-jinja)
+      set_jinja_mode=0
+      filtered_args+=("${arg}")
+      ;;
+    -sp|--special)
+      set_special_mode=0
+      filtered_args+=("${arg}")
+      ;;
+    -sys|--system-prompt|-sysf|--system-prompt-file|--system-prompt=*|--system-prompt-file=*)
+      set_system_prompt=0
+      filtered_args+=("${arg}")
+      ;;
     *)
       filtered_args+=("${arg}")
       ;;
@@ -80,6 +114,37 @@ cmd=(
 
 if [[ "${SINGLE_TURN}" -eq 1 ]]; then
   cmd+=(-st)
+fi
+
+if [[ "${set_chat_mode}" -eq 1 ]]; then
+  case "${LLAMA_CHAT_MODE:-cnv}" in
+    cnv)
+      cmd+=(-cnv)
+      ;;
+    no-cnv)
+      cmd+=(-no-cnv)
+      ;;
+    *)
+      echo "ERROR: invalid LLAMA_CHAT_MODE='${LLAMA_CHAT_MODE}'. Use 'cnv' or 'no-cnv'." >&2
+      exit 1
+      ;;
+  esac
+fi
+
+if [[ "${set_jinja_mode}" -eq 1 ]]; then
+  if [[ "${LLAMA_USE_JINJA:-1}" == "1" ]]; then
+    cmd+=(--jinja)
+  else
+    cmd+=(--no-jinja)
+  fi
+fi
+
+if [[ "${set_special_mode}" -eq 1 && "${LLAMA_SHOW_SPECIAL:-1}" == "1" ]]; then
+  cmd+=(-sp)
+fi
+
+if [[ "${set_system_prompt}" -eq 1 && "${LLAMA_USE_CONTRACT_PROMPT:-1}" == "1" ]]; then
+  cmd+=(-sysf "$(ensure_contract_system_prompt_file)")
 fi
 
 if [[ "${set_n_predict}" -eq 1 ]]; then

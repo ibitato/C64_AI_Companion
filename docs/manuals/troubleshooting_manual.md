@@ -71,7 +71,7 @@ bash scripts/inference/validate_reasoning_behavior.sh
 
 Actions:
 
-1. Confirm runtime uses contract-preserving mode (`--reasoning-format none`).
+1. Confirm runtime uses chat-template path (`-cnv --jinja`), prints specials (`-sp`), uses contract-preserving mode (`--reasoning-format none`), and injects the full contract system prompt (`-sysf` or wrapper default).
 2. Rebuild SFT data and verify `validation_report.json` THINK metrics.
 3. Confirm training used generation-mask template and `assistant_only_loss=True`.
 4. Re-export GGUF and regenerate Modelfiles from `prepare_runtime_assets.sh`.

@@ -461,6 +461,26 @@ ollama create c64-ministral-c64-q8 -f Modelfile.Q8_0
 llama-cli -m c64-ministral-3-8b-thinking-c64-Q6_K.gguf -ngl 99 -c 4096 -n 256 -p "Explain VIC-II timing."
 ```
 
+### llama-server (OpenAI-compatible API / GUI reasoning panel)
+
+```bash
+python3 scripts/prompt_contract.py --print-full > .cache/runtime/c64_system_prompt.txt
+llama-server \
+  -hf {DEFAULT_GGUF_REPO}:F16 \
+  --host 0.0.0.0 --port 8080 \
+  --jinja \
+  --reasoning-format deepseek \
+  --reasoning-budget -1 \
+  --system-prompt-file .cache/runtime/c64_system_prompt.txt \
+  --ctx-size 32768 \
+  -ngl 99 \
+  --temp 0.15 \
+  --threads "$(nproc)" \
+  --fit on
+```
+
+Use `--reasoning-format none` for raw `[THINK]...[/THINK]` tags in `content` instead of separated reasoning fields.
+
 ## Reference Throughput (this workstation)
 
 Measured with `llama-bench` on ROCm (single run, `pp256` and `tg64`):

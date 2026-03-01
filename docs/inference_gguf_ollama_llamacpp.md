@@ -43,6 +43,9 @@ bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain VIC-II badlines in concise
 
 Notes:
 
+- The wrapper defaults to chat-template mode (`-cnv --jinja`) so Ministral prompt/template logic is applied.
+- The wrapper enables special-token printing (`-sp`) so `[THINK]...[/THINK]` delimiters stay visible.
+- The wrapper auto-injects the project contract system prompt (`scripts/prompt_contract.py --print-full`) unless overridden with `-sys/-sysf` or `LLAMA_USE_CONTRACT_PROMPT=0`.
 - The wrapper defaults to `--reasoning-format none` to keep raw `[THINK]...[/THINK]` output visible.
 - Use `--multi-turn` to disable the single-turn shortcut (`-st`) and keep interactive context.
 
@@ -52,11 +55,33 @@ Example:
 bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID ADSR in brief." --multi-turn --simple-io
 ```
 
+## Run llama-server (OpenAI-compatible API / GUI reasoning panel)
+
+```bash
+python3 scripts/prompt_contract.py --print-full > .cache/runtime/c64_system_prompt.txt
+llama-server \
+  -hf ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf:F16 \
+  --host 0.0.0.0 --port 8080 \
+  --jinja \
+  --reasoning-format deepseek \
+  --reasoning-budget -1 \
+  --system-prompt-file .cache/runtime/c64_system_prompt.txt \
+  --ctx-size 32768 \
+  -ngl 99 \
+  --temp 0.15 \
+  --threads "$(nproc)" \
+  --fit on
+```
+
+Use `--reasoning-format none` when you want raw `[THINK]...[/THINK]` tags inside `content` instead of separated reasoning in GUI/OpenAI-compatible responses.
+
 ## Validate Reasoning Contract (Reproducible)
 
 ```bash
 bash scripts/inference/validate_reasoning_behavior.sh
 ```
+
+Validation now forces `-cnv --jinja -sp`, injects the contract system prompt, and applies a per-run timeout to avoid stuck multi-turn sessions in container runs.
 
 Outputs:
 
