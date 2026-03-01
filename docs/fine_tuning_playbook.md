@@ -2,7 +2,7 @@
 
 ## Objective
 
-Fine-tune Ministral 3 8B Reasoning on technical C64 data while preserving a stable visible reasoning format:
+Fine-tune Ministral 3 Reasoning (8B or 14B profile) on technical C64 data while preserving a stable visible reasoning format:
 
 - `[THINK]...[/THINK]`
 - Final answer after `[/THINK]`
@@ -23,7 +23,9 @@ Fine-tune Ministral 3 8B Reasoning on technical C64 data while preserving a stab
 
 ## Prompt and Template Contract
 
-- The base model official prompt is loaded from `models/Ministral-3-8B-Thinking/SYSTEM_PROMPT.txt`.
+- The base model official prompt is loaded from the selected profile base path:
+  - `models/Ministral-3-8B-Thinking/SYSTEM_PROMPT.txt`
+  - `models/Ministral-3-14B-Thinking/SYSTEM_PROMPT.txt`
 - Project C64 specialization is appended (not replacing base prompt).
 - Shared contract source:
   - `scripts/prompt_contract.py`
@@ -41,6 +43,7 @@ SFT uses a custom chat template with generation mask blocks so `assistant_only_l
 ```bash
 docker compose run --rm trainer bash scripts/container/train.sh \
   --phase dapt \
+  --model-profile 8b \
   --model-path models/Ministral-3-8B-Thinking \
   --dapt-dir data/processed/dapt \
   --output-dir models/fine-tuned-dapt \
@@ -53,9 +56,10 @@ docker compose run --rm trainer bash scripts/container/train.sh \
 ```bash
 docker compose run --rm trainer bash scripts/container/train.sh \
   --phase sft \
+  --model-profile 8b \
   --model-path models/Ministral-3-8B-Thinking \
   --sft-dir data/processed/sft \
-  --output-dir models/fine-tuned-sft \
+  --output-dir models/fine-tuned \
   --precision bf16 \
   --assistant-only-loss \
   --strict-assistant-only-loss \
@@ -64,10 +68,18 @@ docker compose run --rm trainer bash scripts/container/train.sh \
   --use-lora
 ```
 
+14B equivalents: use `--model-profile 14b`, `--model-path models/Ministral-3-14B-Thinking`, and profile output paths (`models/fine-tuned-dapt-14b`, `models/fine-tuned-14b`).
+
 ### Full flow
 
 ```bash
 docker compose run --rm trainer bash scripts/container/train.sh
+```
+
+14B default flow:
+
+```bash
+docker compose run --rm trainer bash scripts/container/train.sh --model-profile 14b
 ```
 
 ## Acceptance Criteria

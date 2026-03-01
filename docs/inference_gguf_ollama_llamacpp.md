@@ -8,22 +8,20 @@ Package fine-tuned outputs into GGUF and run inference with Ollama or llama.cpp.
 
 ```bash
 docker compose run --rm trainer bash scripts/container/export_gguf.sh \
-  --base-model-path models/Ministral-3-8B-Thinking \
-  --adapter-path models/fine-tuned \
-  --gguf-dir models/gguf \
+  --model-profile 8b \
   --quantization Q4_K_M
 ```
 
 ## Generate Additional Quantizations
 
 ```bash
-bash scripts/inference/quantize_additional_gguf.sh
+bash scripts/inference/quantize_additional_gguf.sh --model-profile 8b
 ```
 
 ## Prepare Runtime Assets
 
 ```bash
-bash scripts/inference/prepare_runtime_assets.sh
+bash scripts/inference/prepare_runtime_assets.sh --model-profile 8b
 ```
 
 `prepare_runtime_assets.sh` writes `Modelfile*` files with a C64-specialist `SYSTEM` prompt so Ollama runs keep the same scope/behavior constraints used during training data construction.
@@ -32,13 +30,13 @@ When `Q8_0` is available, `Modelfile` (the default alias) points to `Q8_0` for b
 ## Register Models in Ollama
 
 ```bash
-bash scripts/inference/create_ollama_models.sh
+bash scripts/inference/create_ollama_models.sh --model-profile 8b
 ```
 
 ## Run with llama.cpp
 
 ```bash
-bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain VIC-II badlines in concise terms."
+bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain VIC-II badlines in concise terms." --model-profile 8b
 ```
 
 Notes:
@@ -52,20 +50,20 @@ Notes:
 Example:
 
 ```bash
-bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID ADSR in brief." --multi-turn --simple-io
+bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID ADSR in brief." --model-profile 8b --multi-turn --simple-io
 ```
 
 ## Run llama-server (OpenAI-compatible API / GUI reasoning panel)
 
 ```bash
-python3 scripts/prompt_contract.py --print-full > .cache/runtime/c64_system_prompt.txt
+python3 scripts/prompt_contract.py --model-profile 8b --print-full > .cache/runtime/c64_system_prompt_8b.txt
 llama-server \
   -hf ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf:F16 \
   --host 0.0.0.0 --port 8080 \
   --jinja \
   --reasoning-format deepseek \
   --reasoning-budget -1 \
-  --system-prompt-file .cache/runtime/c64_system_prompt.txt \
+  --system-prompt-file .cache/runtime/c64_system_prompt_8b.txt \
   --ctx-size 32768 \
   -ngl 99 \
   --temp 0.15 \
@@ -75,24 +73,42 @@ llama-server \
 
 Use `--reasoning-format none` when you want raw `[THINK]...[/THINK]` tags inside `content` instead of separated reasoning in GUI/OpenAI-compatible responses.
 
+14B variant:
+
+```bash
+python3 scripts/prompt_contract.py --model-profile 14b --print-full > .cache/runtime/c64_system_prompt_14b.txt
+llama-server \
+  -hf ibitato/c64-ministral-3-14b-thinking-c64-reasoning-gguf:F16 \
+  --host 0.0.0.0 --port 8080 \
+  --jinja \
+  --reasoning-format deepseek \
+  --reasoning-budget -1 \
+  --system-prompt-file .cache/runtime/c64_system_prompt_14b.txt \
+  --ctx-size 32768 \
+  -ngl 99 \
+  --temp 0.15 \
+  --threads "$(nproc)" \
+  --fit on
+```
+
 ## Validate Reasoning Contract (Reproducible)
 
 ```bash
-bash scripts/inference/validate_reasoning_behavior.sh
+bash scripts/inference/validate_reasoning_behavior.sh --model-profile 8b
 ```
 
 Validation now forces `-cnv --jinja -sp`, injects the contract system prompt, and applies a per-run timeout to avoid stuck multi-turn sessions in container runs.
 
 Outputs:
 
-- `results/reasoning_validation/<timestamp>/metrics.csv`
-- `results/reasoning_validation/<timestamp>/summary.md`
-- `results/reasoning_validation/<timestamp>/raw/*.log`
+- `results/reasoning_validation/<profile>/<timestamp>/metrics.csv`
+- `results/reasoning_validation/<profile>/<timestamp>/summary.md`
+- `results/reasoning_validation/<profile>/<timestamp>/raw/*.log`
 
 ## Benchmark GGUF Variants (Reproducible)
 
 ```bash
-bash scripts/inference/benchmark_gguf_matrix.sh
+bash scripts/inference/benchmark_gguf_matrix.sh --model-profile 8b
 ```
 
 Notes:
@@ -116,7 +132,16 @@ bash scripts/inference/benchmark_gguf_matrix.sh \
 
 ## Expected GGUF Files
 
+8B profile:
+
 - `models/gguf/c64-ministral-3-8b-thinking-c64-F16.gguf`
 - `models/gguf/c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf`
 - `models/gguf/c64-ministral-3-8b-thinking-c64-Q6_K.gguf`
 - `models/gguf/c64-ministral-3-8b-thinking-c64-Q8_0.gguf`
+
+14B profile:
+
+- `models/gguf-14b/c64-ministral-3-14b-thinking-c64-F16.gguf`
+- `models/gguf-14b/c64-ministral-3-14b-thinking-c64-Q4_K_M.gguf`
+- `models/gguf-14b/c64-ministral-3-14b-thinking-c64-Q6_K.gguf`
+- `models/gguf-14b/c64-ministral-3-14b-thinking-c64-Q8_0.gguf`

@@ -14,8 +14,13 @@ import argparse
 import hashlib
 from pathlib import Path
 
+try:
+    from model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
+except ImportError:  # pragma: no cover - import path differs under test runner
+    from scripts.model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
 
-DEFAULT_BASE_MODEL_PATH = Path("models/Ministral-3-8B-Thinking")
+
+DEFAULT_BASE_MODEL_PATH = get_model_profile(DEFAULT_PROFILE_KEY).base_model_path
 BASE_SYSTEM_PROMPT_FILE = "SYSTEM_PROMPT.txt"
 
 C64_APPEND_PROMPT = """# C64 SPECIALIZATION
@@ -87,6 +92,7 @@ def choose_reasoning_trace(seed_key: str, task: str) -> str:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prompt contract helper.")
     parser.add_argument("--base-model-path", default=str(DEFAULT_BASE_MODEL_PATH))
+    parser.add_argument("--model-profile", choices=available_profiles(), default=DEFAULT_PROFILE_KEY)
     parser.add_argument("--print-base", action="store_true")
     parser.add_argument("--print-full", action="store_true")
     return parser.parse_args()
@@ -94,7 +100,10 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    profile = get_model_profile(args.model_profile)
     base_model_path = Path(args.base_model_path)
+    if str(base_model_path) == str(DEFAULT_BASE_MODEL_PATH):
+        base_model_path = profile.base_model_path
     if args.print_base:
         print(load_base_system_prompt(base_model_path))
         return
@@ -106,4 +115,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

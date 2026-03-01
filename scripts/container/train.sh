@@ -12,12 +12,29 @@ if [ "$#" -gt 0 ]; then
   exit 0
 fi
 
+MODEL_PROFILE="${MODEL_PROFILE:-8b}"
+case "${MODEL_PROFILE}" in
+  8b)
+    MODEL_PATH="models/Ministral-3-8B-Thinking"
+    OUTPUT_DIR="models/fine-tuned"
+    ;;
+  14b)
+    MODEL_PATH="models/Ministral-3-14B-Thinking"
+    OUTPUT_DIR="models/fine-tuned-14b"
+    ;;
+  *)
+    echo "ERROR: unsupported MODEL_PROFILE='${MODEL_PROFILE}'. Use: 8b or 14b" >&2
+    exit 1
+    ;;
+esac
+
 python scripts/fine_tune_mistral_8b.py \
+  --model-profile "${MODEL_PROFILE}" \
   --phase both \
-  --model-path models/Ministral-3-8B-Thinking \
+  --model-path "${MODEL_PATH}" \
   --dapt-dir data/processed/dapt \
   --sft-dir data/processed/sft \
-  --output-dir models/fine-tuned \
+  --output-dir "${OUTPUT_DIR}" \
   --precision bf16 \
   --assistant-only-loss \
   --strict-assistant-only-loss \

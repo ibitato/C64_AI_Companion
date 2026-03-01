@@ -7,22 +7,31 @@ Publish LoRA and GGUF artifacts to Hugging Face with model cards and reproducibl
 Authoritative targets:
 
 - GitHub repository: https://github.com/ibitato/C64_AI_Companion
-- LoRA model: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora
-- GGUF model: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf
+- 8B LoRA model: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora
+- 8B GGUF model: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf
+- 14B LoRA model: https://huggingface.co/ibitato/c64-ministral-3-14b-thinking-c64-reasoning-lora
+- 14B GGUF model: https://huggingface.co/ibitato/c64-ministral-3-14b-thinking-c64-reasoning-gguf
 
 ## Preconditions
 
 - `HF_TOKEN` available in local `.env` (write permission).
-- Trained adapter artifacts exist in `models/fine-tuned`.
-- GGUF artifacts exist in `models/gguf`.
+- Trained adapter artifacts exist in profile output path (`models/fine-tuned` or `models/fine-tuned-14b`).
+- GGUF artifacts exist in profile output path (`models/gguf` or `models/gguf-14b`).
 - Reasoning contract validation passed:
-  - `bash scripts/inference/validate_reasoning_behavior.sh`
+  - `bash scripts/inference/validate_reasoning_behavior.sh --model-profile <8b|14b>`
 
 ## Publish Command
 
 ```bash
 set -a && . ./.env && set +a
-python3 scripts/release/publish_hf.py
+python3 scripts/release/publish_hf.py --model-profile 8b
+```
+
+14B example:
+
+```bash
+set -a && . ./.env && set +a
+python3 scripts/release/publish_hf.py --model-profile 14b
 ```
 
 Notes:
@@ -33,10 +42,14 @@ Notes:
 
 ## Output Repositories
 
-Default targets:
+Default targets by profile:
 
-- `ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora`
-- `ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf`
+- `8b`:
+  - `ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora`
+  - `ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf`
+- `14b`:
+  - `ibitato/c64-ministral-3-14b-thinking-c64-reasoning-lora`
+  - `ibitato/c64-ministral-3-14b-thinking-c64-reasoning-gguf`
 
 ## Verification
 
@@ -54,6 +67,8 @@ import json, urllib.request
 repos = [
     "ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora",
     "ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf",
+    "ibitato/c64-ministral-3-14b-thinking-c64-reasoning-lora",
+    "ibitato/c64-ministral-3-14b-thinking-c64-reasoning-gguf",
 ]
 for repo in repos:
     with urllib.request.urlopen(f"https://huggingface.co/api/models/{repo}", timeout=30) as r:

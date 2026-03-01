@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-GGUF_DIR="${ROOT_DIR}/models/gguf"
 LLAMA_BIN="${LLAMA_BIN:-${ROOT_DIR}/.cache/llama.cpp/build/bin/llama-cli}"
+MODEL_PROFILE="${LLAMA_MODEL_PROFILE:-${MODEL_PROFILE:-8b}}"
 
 QUANT="${1:-Q8_0}"
 PROMPT="${2:-Briefly explain what the Commodore 64 SID chip does.}"
@@ -15,13 +15,35 @@ set_chat_mode=1
 set_jinja_mode=1
 set_special_mode=1
 set_system_prompt=1
-DEFAULT_SYSTEM_PROMPT_FILE="${ROOT_DIR}/.cache/runtime/c64_system_prompt.txt"
+
+resolve_profile_paths() {
+  case "${MODEL_PROFILE}" in
+    8b)
+      GGUF_DIR="${ROOT_DIR}/models/gguf"
+      MODEL_PREFIX="c64-ministral-3-8b-thinking-c64"
+      BASE_MODEL_PATH="models/Ministral-3-8B-Thinking"
+      ;;
+    14b)
+      GGUF_DIR="${ROOT_DIR}/models/gguf-14b"
+      MODEL_PREFIX="c64-ministral-3-14b-thinking-c64"
+      BASE_MODEL_PATH="models/Ministral-3-14B-Thinking"
+      ;;
+    *)
+      echo "ERROR: unsupported model profile '${MODEL_PROFILE}'. Use: 8b or 14b" >&2
+      exit 1
+      ;;
+  esac
+  DEFAULT_SYSTEM_PROMPT_FILE="${ROOT_DIR}/.cache/runtime/c64_system_prompt_${MODEL_PROFILE}.txt"
+}
 
 ensure_contract_system_prompt_file() {
   local out_file="${DEFAULT_SYSTEM_PROMPT_FILE}"
   mkdir -p "$(dirname "${out_file}")"
   if [[ ! -s "${out_file}" || "${LLAMA_REFRESH_SYSTEM_PROMPT:-0}" == "1" ]]; then
-    python3 "${ROOT_DIR}/scripts/prompt_contract.py" --print-full > "${out_file}"
+    python3 "${ROOT_DIR}/scripts/prompt_contract.py" \
+      --model-profile "${MODEL_PROFILE}" \
+      --base-model-path "${BASE_MODEL_PATH}" \
+      --print-full > "${out_file}"
   fi
   if [[ ! -s "${out_file}" ]]; then
     echo "ERROR: failed to prepare system prompt file at '${out_file}'" >&2
@@ -42,24 +64,25 @@ case "${QUANT^^}" in
     ;;
 esac
 
-MODEL_PATH="${GGUF_DIR}/c64-ministral-3-8b-thinking-c64-${QUANT}.gguf"
-
-if [[ ! -x "${LLAMA_BIN}" ]]; then
-  echo "ERROR: llama.cpp executable not found at '${LLAMA_BIN}'" >&2
-  exit 1
-fi
-
-if [[ ! -f "${MODEL_PATH}" ]]; then
-  echo "ERROR: model file not found at '${MODEL_PATH}'" >&2
-  exit 1
-fi
-
-echo "Using model: ${MODEL_PATH}"
-echo "Executable: ${LLAMA_BIN}"
-
 filtered_args=()
-for arg in "${EXTRA_ARGS[@]}"; do
+i=0
+while [[ "${i}" -lt "${#EXTRA_ARGS[@]}" ]]; do
+  arg="${EXTRA_ARGS[$i]}"
   case "${arg}" in
+    --model-profile)
+      if [[ $((i + 1)) -ge ${#EXTRA_ARGS[@]} ]]; then
+        echo "ERROR: --model-profile requires a value" >&2
+        exit 1
+      fi
+      MODEL_PROFILE="${EXTRA_ARGS[$((i + 1))]}"
+      i=$((i + 2))
+      continue
+      ;;
+    --model-profile=*)
+      MODEL_PROFILE="${arg#*=}"
+      i=$((i + 1))
+      continue
+      ;;
     --multi-turn)
       SINGLE_TURN=0
       ;;
@@ -86,8 +109,26 @@ for arg in "${EXTRA_ARGS[@]}"; do
       filtered_args+=("${arg}")
       ;;
   esac
+  i=$((i + 1))
 done
 EXTRA_ARGS=("${filtered_args[@]}")
+
+resolve_profile_paths
+MODEL_PATH="${GGUF_DIR}/${MODEL_PREFIX}-${QUANT}.gguf"
+
+if [[ ! -x "${LLAMA_BIN}" ]]; then
+  echo "ERROR: llama.cpp executable not found at '${LLAMA_BIN}'" >&2
+  exit 1
+fi
+
+if [[ ! -f "${MODEL_PATH}" ]]; then
+  echo "ERROR: model file not found at '${MODEL_PATH}'" >&2
+  exit 1
+fi
+
+echo "Using model: ${MODEL_PATH}"
+echo "Executable: ${LLAMA_BIN}"
+echo "Model profile: ${MODEL_PROFILE}"
 
 set_n_predict=1
 set_reasoning_format=1

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RESULTS_DIR="${ROOT_DIR}/results/reasoning_validation"
+MODEL_PROFILE="${MODEL_PROFILE:-8b}"
+RESULTS_BASE_DIR="${ROOT_DIR}/results/reasoning_validation"
 IN_CONTAINER=0
 
 MODELS="F16 Q4_K_M"
@@ -28,6 +29,7 @@ Usage:
   bash scripts/inference/validate_reasoning_behavior.sh [options]
 
 Options:
+  --model-profile P        Model profile (8b|14b). Default: 8b
   --in-container           Internal flag used by docker wrapper.
   --models "LIST"          Space-separated quant list. Default: "F16 Q4_K_M"
   --seeds "LIST"           Space-separated seeds. Default: "11 22 33"
@@ -46,6 +48,10 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --model-profile)
+      MODEL_PROFILE="${2:-}"
+      shift 2
+      ;;
     --in-container)
       IN_CONTAINER=1
       shift
@@ -90,6 +96,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "${MODEL_PROFILE}" in
+  8b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf"
+    MODEL_PREFIX="c64-ministral-3-8b-thinking-c64"
+    ;;
+  14b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf-14b"
+    MODEL_PREFIX="c64-ministral-3-14b-thinking-c64"
+    ;;
+  *)
+    echo "ERROR: unsupported model profile '${MODEL_PROFILE}'. Use: 8b or 14b" >&2
+    exit 1
+    ;;
+esac
+RESULTS_DIR="${RESULTS_BASE_DIR}/${MODEL_PROFILE}"
+
 if [[ "${IN_CONTAINER}" -eq 0 ]]; then
   if ! command -v docker >/dev/null 2>&1; then
     echo "ERROR: docker is required for reproducible validation." >&2
@@ -102,6 +124,7 @@ if [[ "${IN_CONTAINER}" -eq 0 ]]; then
   compose_cmd=(
     docker compose run --rm -T trainer
     bash scripts/inference/validate_reasoning_behavior.sh --in-container
+    --model-profile "$MODEL_PROFILE"
     --models "$MODELS"
     --seeds "$SEEDS"
     --n-predict "$N_PREDICT"
@@ -135,7 +158,7 @@ echo "run_type,quant,seed,log_path" > "${RUNS_FILE}"
 
 echo "Running reasoning behavior validation..."
 for quant in ${MODELS}; do
-  model_path="${ROOT_DIR}/models/gguf/c64-ministral-3-8b-thinking-c64-${quant}.gguf"
+  model_path="${GGUF_DIR}/${MODEL_PREFIX}-${quant}.gguf"
   if [[ ! -f "${model_path}" ]]; then
     echo "ERROR: model file missing for quant '${quant}': ${model_path}" >&2
     exit 1
@@ -145,6 +168,7 @@ for quant in ${MODELS}; do
     multi_log="${RAW_DIR}/multi_${quant}_seed${seed}.log"
 
     timeout "${TIMEOUT_SEC}" bash "${ROOT_DIR}/scripts/inference/run_llama_cpp.sh" "${quant}" "${PROMPT_SINGLE}" \
+      --model-profile "${MODEL_PROFILE}" \
       -cnv \
       --jinja \
       -sp \
@@ -161,6 +185,7 @@ for quant in ${MODELS}; do
 
     printf "%s\n/exit\n" "${PROMPT_MULTI_2}" | \
       timeout "${TIMEOUT_SEC}" bash "${ROOT_DIR}/scripts/inference/run_llama_cpp.sh" "${quant}" "${PROMPT_MULTI_1}" \
+        --model-profile "${MODEL_PROFILE}" \
         --multi-turn \
         -cnv \
         --jinja \

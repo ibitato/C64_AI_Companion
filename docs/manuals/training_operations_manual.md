@@ -6,7 +6,9 @@ Operational checklist for reliable DAPT+SFT training runs.
 
 ## Preconditions
 
-- Base model exists at `models/Ministral-3-8B-Thinking`.
+- Base model exists for selected profile:
+  - `models/Ministral-3-8B-Thinking` (`8b`)
+  - `models/Ministral-3-14B-Thinking` (`14b`)
 - Processed datasets exist under `data/processed/`.
 - Container image built successfully.
 
@@ -25,7 +27,7 @@ Operational checklist for reliable DAPT+SFT training runs.
 - DAPT and SFT steps advance without crashes.
 - Output model and checkpoints exist under `models/`.
 - SFT keeps `assistant_only_loss=True`.
-- Runtime reasoning validation passes (`scripts/inference/validate_reasoning_behavior.sh`).
+- Runtime reasoning validation passes (`scripts/inference/validate_reasoning_behavior.sh --model-profile <8b|14b>`).
 
 ## Failure Modes
 

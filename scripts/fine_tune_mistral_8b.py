@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fine-tuning entrypoint for Ministral-3-8B-Thinking.
+Fine-tuning entrypoint for Ministral-3 Thinking profiles.
 
 Phases:
   - dapt: domain adaptation on text chunks
@@ -26,20 +26,27 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
-CANONICAL_MODEL_PATH = Path("models/Ministral-3-8B-Thinking").resolve()
+try:
+    from model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
+except ImportError:  # pragma: no cover - import path differs under test runner
+    from scripts.model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
+
+DEFAULT_MODEL_PATH = "models/Ministral-3-8B-Thinking"
+DEFAULT_OUTPUT_DIR = "models/fine-tuned"
 DEFAULT_CHAT_TEMPLATE_PATH = Path("scripts/templates/mistral3_chat_template_assistant_mask.jinja")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fine-tune Ministral-3-8B-Thinking.")
+    parser = argparse.ArgumentParser(description="Fine-tune Ministral-3 Thinking profiles (8b/14b).")
     parser.add_argument("--phase", choices=["dapt", "sft", "both"], default="both")
     # Backward-compatible alias.
     parser.add_argument("--mode", choices=["dapt", "sft", "both"], default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--model-profile", choices=available_profiles(), default=DEFAULT_PROFILE_KEY)
 
-    parser.add_argument("--model-path", default="models/Ministral-3-8B-Thinking")
+    parser.add_argument("--model-path", default=DEFAULT_MODEL_PATH)
     parser.add_argument("--dapt-dir", default="data/processed/dapt")
     parser.add_argument("--sft-dir", default="data/processed/sft")
-    parser.add_argument("--output-dir", default="models/fine-tuned")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--dapt-output-dir", default=None)
     parser.add_argument("--sft-output-dir", default=None)
 
@@ -91,13 +98,14 @@ def normalize_phase(args: argparse.Namespace) -> None:
         args.phase = args.mode
 
 
-def enforce_model_policy(model_path: str) -> Path:
-    """Enforce the project policy for the canonical base model path."""
+def enforce_model_policy(model_path: str, model_profile: str) -> Path:
+    """Enforce profile-specific base model policy."""
+    canonical_model_path = get_model_profile(model_profile).base_model_path.resolve()
     resolved = Path(model_path).resolve()
-    if resolved != CANONICAL_MODEL_PATH:
+    if resolved != canonical_model_path:
         raise ValueError(
             "Invalid base model path. This project only allows the original model at "
-            f"{CANONICAL_MODEL_PATH} (received: {resolved})"
+            f"{canonical_model_path} (received: {resolved})"
         )
     if not resolved.exists():
         raise FileNotFoundError(f"Model path not found: {resolved}")
@@ -481,7 +489,13 @@ def main() -> None:
     """CLI entrypoint for single-phase or two-phase training runs."""
     args = parse_args()
     normalize_phase(args)
-    canonical_model_path = enforce_model_policy(args.model_path)
+    profile = get_model_profile(args.model_profile)
+    if args.model_path == DEFAULT_MODEL_PATH:
+        args.model_path = str(profile.base_model_path)
+    if args.output_dir == DEFAULT_OUTPUT_DIR:
+        args.output_dir = str(profile.sft_output_dir)
+
+    canonical_model_path = enforce_model_policy(args.model_path, args.model_profile)
     args.model_path = str(canonical_model_path)
 
     device, bf16_supported = setup_device()
@@ -520,7 +534,12 @@ def main() -> None:
         return
 
     # both
-    dapt_output = args.dapt_output_dir or f"{args.output_dir}-dapt"
+    if args.dapt_output_dir:
+        dapt_output = args.dapt_output_dir
+    elif args.output_dir == str(profile.sft_output_dir):
+        dapt_output = str(profile.dapt_output_dir)
+    else:
+        dapt_output = f"{args.output_dir}-dapt"
     sft_output = args.sft_output_dir or args.output_dir
 
     next_model_path, adapter_path = run_dapt_phase(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export fine-tuned Ministral-3-8B-Thinking LoRA output to GGUF."""
+"""Export profile-selected Ministral LoRA output to GGUF."""
 
 from __future__ import annotations
 
@@ -18,9 +18,18 @@ try:
 except ImportError:  # pragma: no cover - import path differs under test runner
     from scripts.prompt_contract import build_c64_system_prompt
 
+try:
+    from model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
+except ImportError:  # pragma: no cover - import path differs under test runner
+    from scripts.model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
 
-ALLOWED_BASE_MODEL = Path("models/Ministral-3-8B-Thinking")
+
 LLAMA_CPP_REPO = "https://github.com/ggml-org/llama.cpp"
+DEFAULT_BASE_MODEL = "models/Ministral-3-8B-Thinking"
+DEFAULT_ADAPTER_PATH = "models/fine-tuned"
+DEFAULT_MERGED_DIR = "models/fine-tuned-merged-hf"
+DEFAULT_GGUF_DIR = "models/gguf"
+DEFAULT_NAME_PREFIX = "c64-ministral-3-8b-thinking-c64"
 
 
 def run(cmd: list[str], *, dry_run: bool = False) -> None:
@@ -35,15 +44,16 @@ def run(cmd: list[str], *, dry_run: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Merge LoRA adapter into Ministral-3-8B-Thinking, convert to GGUF, "
+            "Merge LoRA adapter into selected Ministral profile, convert to GGUF, "
             "and optionally quantize for Ollama/llama.cpp."
         )
     )
-    parser.add_argument("--base-model-path", default=str(ALLOWED_BASE_MODEL))
-    parser.add_argument("--adapter-path", default="models/fine-tuned")
-    parser.add_argument("--merged-model-dir", default="models/fine-tuned-merged-hf")
-    parser.add_argument("--gguf-dir", default="models/gguf")
-    parser.add_argument("--name-prefix", default="c64-ministral-3-8b-thinking-c64")
+    parser.add_argument("--model-profile", choices=available_profiles(), default=DEFAULT_PROFILE_KEY)
+    parser.add_argument("--base-model-path", default=DEFAULT_BASE_MODEL)
+    parser.add_argument("--adapter-path", default=DEFAULT_ADAPTER_PATH)
+    parser.add_argument("--merged-model-dir", default=DEFAULT_MERGED_DIR)
+    parser.add_argument("--gguf-dir", default=DEFAULT_GGUF_DIR)
+    parser.add_argument("--name-prefix", default=DEFAULT_NAME_PREFIX)
     parser.add_argument("--quantization", default="Q4_K_M")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--dtype", choices=("auto", "float16", "bfloat16", "float32"), default="auto")
@@ -59,10 +69,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_allowed_base_model(path_str: str) -> Path:
-    """Enforce repository policy for the canonical base model location."""
+def resolve_allowed_base_model(path_str: str, model_profile: str) -> Path:
+    """Enforce repository policy for profile-specific canonical base path."""
     workspace = Path.cwd().resolve()
-    allowed = (workspace / ALLOWED_BASE_MODEL).resolve()
+    allowed = (workspace / get_model_profile(model_profile).base_model_path).resolve()
     candidate = Path(path_str).expanduser()
     if not candidate.is_absolute():
         candidate = (workspace / candidate).resolve()
@@ -72,7 +82,7 @@ def resolve_allowed_base_model(path_str: str) -> Path:
     if candidate != allowed:
         raise ValueError(
             "Base model path is restricted by project policy. "
-            f"Use exactly: {ALLOWED_BASE_MODEL}"
+            f"Use exactly: {allowed}"
         )
     return candidate
 
@@ -250,8 +260,20 @@ def ensure_sentencepiece_available(*, dry_run: bool) -> None:
 def main() -> None:
     """End-to-end GGUF export orchestration."""
     args = parse_args()
+    profile = get_model_profile(args.model_profile)
 
-    base_model_path = resolve_allowed_base_model(args.base_model_path)
+    if args.base_model_path == DEFAULT_BASE_MODEL:
+        args.base_model_path = str(profile.base_model_path)
+    if args.adapter_path == DEFAULT_ADAPTER_PATH:
+        args.adapter_path = str(profile.sft_output_dir)
+    if args.merged_model_dir == DEFAULT_MERGED_DIR:
+        args.merged_model_dir = str(profile.merged_output_dir)
+    if args.gguf_dir == DEFAULT_GGUF_DIR:
+        args.gguf_dir = str(profile.gguf_dir)
+    if args.name_prefix == DEFAULT_NAME_PREFIX:
+        args.name_prefix = profile.gguf_prefix
+
+    base_model_path = resolve_allowed_base_model(args.base_model_path, args.model_profile)
     system_prompt = build_c64_system_prompt(base_model_path)
     adapter_path = Path(args.adapter_path).resolve()
     merged_model_dir = Path(args.merged_model_dir).resolve()
@@ -360,7 +382,7 @@ def main() -> None:
     print("")
     print("Export finished.")
     print(f"Main GGUF: {final_gguf}")
-    print(f"Ollama create command: ollama create c64-ministral-c64 -f {gguf_dir / 'Modelfile'}")
+    print(f"Ollama create command: ollama create {profile.ollama_base_name} -f {gguf_dir / 'Modelfile'}")
     print(f"llama.cpp example: llama-cli -m {final_gguf} -p \"LOAD\" -n 64")
 
 

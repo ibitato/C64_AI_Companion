@@ -1,6 +1,6 @@
 # C64 AI Companion
 
-C64 AI Companion is a reproducible fine-tuning project that adapts a reasoning-capable Ministral 3 8B model to technical Commodore 64 knowledge.
+C64 AI Companion is a reproducible fine-tuning project that adapts reasoning-capable Ministral 3 models (8B and 14B profiles) to technical Commodore 64 knowledge.
 
 ## Project Objective
 
@@ -8,7 +8,7 @@ The objective is to keep strong reasoning behavior while adding accurate, practi
 
 ## What This Project Is and Is Not
 
-- It is a container-first training and packaging workflow for one controlled base model.
+- It is a container-first training and packaging workflow for controlled base-model profiles.
 - It is a reproducible engineering pipeline for dataset preparation, DAPT/SFT fine-tuning, and GGUF export.
 - It enforces a visible reasoning contract: `[THINK]...[/THINK]` followed by final answer.
 - It is not a generic multi-model framework.
@@ -18,7 +18,9 @@ The objective is to keep strong reasoning behavior while adding accurate, practi
 
 - Training and packaging run in Docker.
 - Canonical training image: `rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1`.
-- Canonical base model path: `models/Ministral-3-8B-Thinking`.
+- Canonical base model paths:
+  - `models/Ministral-3-8B-Thinking` (`--model-profile 8b`, default)
+  - `models/Ministral-3-14B-Thinking` (`--model-profile 14b`)
 - Project-local cache: `.cache/huggingface`.
 
 ### Strix Halo Runtime Note
@@ -58,38 +60,56 @@ docker compose run --rm trainer bash scripts/container/gpu_smoke.sh
 docker compose run --rm trainer bash scripts/container/pipeline.sh
 ```
 
+For 14B:
+
+```bash
+docker compose run --rm trainer bash scripts/container/pipeline.sh --model-profile 14b
+```
+
 5. Train (DAPT + SFT):
 
 ```bash
 docker compose run --rm trainer bash scripts/container/train.sh
 ```
 
+For 14B:
+
+```bash
+docker compose run --rm trainer bash scripts/container/train.sh --model-profile 14b
+```
+
 6. Export GGUF:
 
 ```bash
 docker compose run --rm trainer bash scripts/container/export_gguf.sh \
-  --base-model-path models/Ministral-3-8B-Thinking \
-  --adapter-path models/fine-tuned \
-  --gguf-dir models/gguf \
+  --model-profile 8b \
+  --quantization Q4_K_M
+```
+
+For 14B:
+
+```bash
+docker compose run --rm trainer bash scripts/container/export_gguf.sh \
+  --model-profile 14b \
   --quantization Q4_K_M
 ```
 
 7. Optional extra quantizations (`Q6_K`, `Q8_0`):
 
 ```bash
-bash scripts/inference/quantize_additional_gguf.sh
+bash scripts/inference/quantize_additional_gguf.sh --model-profile 8b
 ```
 
 8. Validate reasoning contract (single-turn + multi-turn):
 
 ```bash
-bash scripts/inference/validate_reasoning_behavior.sh
+bash scripts/inference/validate_reasoning_behavior.sh --model-profile 8b
 ```
 
 9. Reproducible GGUF benchmark matrix (container-run, CSV output):
 
 ```bash
-bash scripts/inference/benchmark_gguf_matrix.sh
+bash scripts/inference/benchmark_gguf_matrix.sh --model-profile 8b
 ```
 
 ## Inference Runtimes
@@ -97,26 +117,26 @@ bash scripts/inference/benchmark_gguf_matrix.sh
 - Ollama helper:
 
 ```bash
-bash scripts/inference/create_ollama_models.sh
+bash scripts/inference/create_ollama_models.sh --model-profile 8b
 ```
 
 - llama.cpp helper:
 
 ```bash
-bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID voices in two concise points."
+bash scripts/inference/run_llama_cpp.sh Q8_0 "Explain SID voices in two concise points." --model-profile 8b
 ```
 
 - llama.cpp server (OpenAI-compatible API / GUI reasoning panel):
 
 ```bash
-python3 scripts/prompt_contract.py --print-full > .cache/runtime/c64_system_prompt.txt
+python3 scripts/prompt_contract.py --model-profile 8b --print-full > .cache/runtime/c64_system_prompt_8b.txt
 ./llama-server \
   -hf ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf:F16 \
   --host 0.0.0.0 --port 8080 \
   --jinja \
   --reasoning-format deepseek \
   --reasoning-budget -1 \
-  --system-prompt-file .cache/runtime/c64_system_prompt.txt \
+  --system-prompt-file .cache/runtime/c64_system_prompt_8b.txt \
   --ctx-size 32768 \
   -ngl 99 \
   --temp 0.15 \
@@ -129,14 +149,21 @@ Use `--reasoning-format none` if you want raw `[THINK]...[/THINK]` tags in `cont
 - Benchmark all GGUF variants and write `results/benchmarks/*.csv`:
 
 ```bash
-bash scripts/inference/benchmark_gguf_matrix.sh --models "F16 Q4_K_M Q6_K Q8_0"
+bash scripts/inference/benchmark_gguf_matrix.sh --model-profile 8b --models "F16 Q4_K_M Q6_K Q8_0"
 ```
 
 ## Hugging Face Artifacts
 
+8B profile:
+
 - Collection: https://huggingface.co/collections/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-699d67350911049ec1a82e18
 - LoRA repo: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora
 - GGUF repo: https://huggingface.co/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf
+
+14B profile:
+
+- LoRA repo: https://huggingface.co/ibitato/c64-ministral-3-14b-thinking-c64-reasoning-lora
+- GGUF repo: https://huggingface.co/ibitato/c64-ministral-3-14b-thinking-c64-reasoning-gguf
 
 ## Publication Traceability
 
@@ -171,7 +198,9 @@ See `docs/specs/reasoning_contract.md` for the authoritative reasoning/output co
 
 ## Security and Model Policy
 
-- Base model path is restricted by policy to `models/Ministral-3-8B-Thinking`.
+- Base model path is restricted by policy to profile canonical paths:
+  - `models/Ministral-3-8B-Thinking` (`8b`)
+  - `models/Ministral-3-14B-Thinking` (`14b`)
 - Sensitive tokens must be stored in local `.env` only.
 - Large artifacts and caches remain excluded by `.gitignore`.
 

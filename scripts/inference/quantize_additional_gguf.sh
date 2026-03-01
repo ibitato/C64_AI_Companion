@@ -2,10 +2,51 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-GGUF_DIR="${ROOT_DIR}/models/gguf"
+MODEL_PROFILE="${MODEL_PROFILE:-8b}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  bash scripts/inference/quantize_additional_gguf.sh [--model-profile 8b|14b]
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model-profile)
+      MODEL_PROFILE="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown option '$1'" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+case "${MODEL_PROFILE}" in
+  8b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf"
+    PREFIX="c64-ministral-3-8b-thinking-c64"
+    ;;
+  14b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf-14b"
+    PREFIX="c64-ministral-3-14b-thinking-c64"
+    ;;
+  *)
+    echo "ERROR: unsupported model profile '${MODEL_PROFILE}'. Use: 8b or 14b" >&2
+    exit 1
+    ;;
+esac
+
 QBIN="${ROOT_DIR}/.cache/llama.cpp/build/bin/llama-quantize"
 LLAMA_BIN_DIR="${ROOT_DIR}/.cache/llama.cpp/build/bin"
-BASE_F16="${GGUF_DIR}/c64-ministral-3-8b-thinking-c64-F16.gguf"
+BASE_F16="${GGUF_DIR}/${PREFIX}-F16.gguf"
 
 if [[ ! -x "${QBIN}" ]]; then
   echo "ERROR: '${QBIN}' is missing. Build llama.cpp first." >&2
@@ -37,13 +78,13 @@ probe_quantize_runtime() {
     if [[ ! -f "/.dockerenv" ]] && command -v docker >/dev/null 2>&1; then
       if docker compose version >/dev/null 2>&1; then
         echo "INFO: missing runtime libs on host. Re-running inside 'trainer' container..." >&2
-        exec docker compose run --rm trainer bash scripts/inference/quantize_additional_gguf.sh
+        exec docker compose run --rm trainer bash scripts/inference/quantize_additional_gguf.sh --model-profile "${MODEL_PROFILE}"
       fi
     fi
 
     echo "ERROR: llama-quantize runtime dependencies are missing." >&2
     echo "Hint: run inside the trainer container:" >&2
-    echo "  docker compose run --rm trainer bash scripts/inference/quantize_additional_gguf.sh" >&2
+    echo "  docker compose run --rm trainer bash scripts/inference/quantize_additional_gguf.sh --model-profile ${MODEL_PROFILE}" >&2
     exit 1
   fi
 }
@@ -52,7 +93,7 @@ probe_quantize_runtime
 
 quantize_if_missing() {
   local quant="$1"
-  local out_file="${GGUF_DIR}/c64-ministral-3-8b-thinking-c64-${quant}.gguf"
+  local out_file="${GGUF_DIR}/${PREFIX}-${quant}.gguf"
   if [[ -f "${out_file}" ]]; then
     echo "SKIP: ${out_file} already exists"
     return 0

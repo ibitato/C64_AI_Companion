@@ -8,12 +8,12 @@ Publish trained artifacts to Hugging Face in a reproducible and auditable way.
 
 - `.env` contains `HF_TOKEN` with write permissions.
 - LoRA and GGUF artifacts are generated and validated.
-- Reasoning contract validation passed (`scripts/inference/validate_reasoning_behavior.sh`).
+- Reasoning contract validation passed (`scripts/inference/validate_reasoning_behavior.sh --model-profile <8b|14b>`).
 
 ## Procedure
 
 1. Load local `.env` token into shell session.
-2. Run `scripts/release/publish_hf.py`.
+2. Run `scripts/release/publish_hf.py --model-profile <8b|14b>`.
 3. Verify files and model card content in both target repos.
 
 ## Validation Checkpoints

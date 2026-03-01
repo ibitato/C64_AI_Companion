@@ -25,7 +25,9 @@ Use this order when applicable:
 
 ## Consistency Rules
 
-- Use `models/Ministral-3-8B-Thinking` when referencing base model path.
+- Use profile-canonical base model paths when referencing training inputs:
+  - `models/Ministral-3-8B-Thinking` (`8b`, default)
+  - `models/Ministral-3-14B-Thinking` (`14b`)
 - Use `docker compose` syntax consistently.
 - Prefer explicit paths over implied context.
 

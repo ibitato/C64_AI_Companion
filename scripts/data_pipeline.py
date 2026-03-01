@@ -37,13 +37,18 @@ from bs4 import BeautifulSoup
 from transformers import AutoTokenizer
 
 try:
+    from model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
+except ImportError:  # pragma: no cover - import path differs under test runner
+    from scripts.model_profiles import DEFAULT_PROFILE_KEY, available_profiles, get_model_profile
+
+try:
     from prompt_contract import build_c64_system_prompt, choose_reasoning_trace
 except ImportError:  # pragma: no cover - import path differs under test runner
     from scripts.prompt_contract import build_c64_system_prompt, choose_reasoning_trace
 
 
 DEFAULT_SOURCE_DIR = Path("c64_docs")
-DEFAULT_MODEL_PATH = Path("models/Ministral-3-8B-Thinking")
+DEFAULT_MODEL_PATH = get_model_profile(DEFAULT_PROFILE_KEY).base_model_path
 
 INTERIM_DIR = Path("data/interim")
 PROCESSED_DIR = Path("data/processed")
@@ -1071,6 +1076,7 @@ def parse_args() -> argparse.Namespace:
         help="Pipeline stage to run.",
     )
     parser.add_argument("--source-dir", type=Path, default=DEFAULT_SOURCE_DIR)
+    parser.add_argument("--model-profile", choices=available_profiles(), default=DEFAULT_PROFILE_KEY)
     parser.add_argument("--model-path", type=Path, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--seed", type=int, default=42)
 
@@ -1142,6 +1148,9 @@ def run(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
+    profile = get_model_profile(args.model_profile)
+    if args.model_path == DEFAULT_MODEL_PATH:
+        args.model_path = profile.base_model_path
     run(args)
 
 

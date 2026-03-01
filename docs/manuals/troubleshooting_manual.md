@@ -66,7 +66,7 @@ Symptoms:
 Checks:
 
 ```bash
-bash scripts/inference/validate_reasoning_behavior.sh
+bash scripts/inference/validate_reasoning_behavior.sh --model-profile <8b|14b>
 ```
 
 Actions:

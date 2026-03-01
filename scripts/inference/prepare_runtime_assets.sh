@@ -2,11 +2,52 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-GGUF_DIR="${ROOT_DIR}/models/gguf"
-PREFIX="c64-ministral-3-8b-thinking-c64"
+MODEL_PROFILE="${MODEL_PROFILE:-8b}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  bash scripts/inference/prepare_runtime_assets.sh [--model-profile 8b|14b]
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model-profile)
+      MODEL_PROFILE="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown option '$1'" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+case "${MODEL_PROFILE}" in
+  8b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf"
+    PREFIX="c64-ministral-3-8b-thinking-c64"
+    BASE_MODEL_PATH="models/Ministral-3-8B-Thinking"
+    ;;
+  14b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf-14b"
+    PREFIX="c64-ministral-3-14b-thinking-c64"
+    BASE_MODEL_PATH="models/Ministral-3-14B-Thinking"
+    ;;
+  *)
+    echo "ERROR: unsupported model profile '${MODEL_PROFILE}'. Use: 8b or 14b" >&2
+    exit 1
+    ;;
+esac
 
 cd "${ROOT_DIR}"
-SYSTEM_PROMPT="$(python3 scripts/prompt_contract.py --base-model-path models/Ministral-3-8B-Thinking --print-full)"
+SYSTEM_PROMPT="$(python3 scripts/prompt_contract.py --model-profile "${MODEL_PROFILE}" --base-model-path "${BASE_MODEL_PATH}" --print-full)"
 
 mkdir -p "${GGUF_DIR}"
 

@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-GGUF_DIR="${ROOT_DIR}/models/gguf"
 RESULTS_DIR="${ROOT_DIR}/results/benchmarks"
 LLAMA_BIN="${ROOT_DIR}/.cache/llama.cpp/build/bin/llama-completion"
 IN_CONTAINER=0
+MODEL_PROFILE="${MODEL_PROFILE:-8b}"
 
 MODELS="F16 Q4_K_M Q6_K Q8_0"
 PROMPT="List 4 concise points about the Commodore 64 SID chip."
@@ -20,6 +20,7 @@ Usage:
   bash scripts/inference/benchmark_gguf_matrix.sh [options]
 
 Options:
+  --model-profile P        Model profile (8b|14b). Default: 8b
   --in-container           Internal flag used by docker wrapper.
   --output FILE            Output CSV path. Default: results/benchmarks/gguf_benchmark_<timestamp>.csv
   --models "LIST"          Space-separated quant list. Default: "F16 Q4_K_M Q6_K Q8_0"
@@ -37,6 +38,10 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --model-profile)
+      MODEL_PROFILE="${2:-}"
+      shift 2
+      ;;
     --in-container)
       IN_CONTAINER=1
       shift
@@ -77,6 +82,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "${MODEL_PROFILE}" in
+  8b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf"
+    MODEL_PREFIX="c64-ministral-3-8b-thinking-c64"
+    ;;
+  14b)
+    GGUF_DIR="${ROOT_DIR}/models/gguf-14b"
+    MODEL_PREFIX="c64-ministral-3-14b-thinking-c64"
+    ;;
+  *)
+    echo "ERROR: unsupported model profile '${MODEL_PROFILE}'. Use: 8b or 14b" >&2
+    exit 1
+    ;;
+esac
+
 if [[ "${IN_CONTAINER}" -eq 0 ]]; then
   if ! command -v docker >/dev/null 2>&1; then
     echo "ERROR: docker is required to run this benchmark reproducibly." >&2
@@ -89,6 +109,7 @@ if [[ "${IN_CONTAINER}" -eq 0 ]]; then
   compose_cmd=(
     docker compose run --rm trainer
     bash scripts/inference/benchmark_gguf_matrix.sh --in-container
+    --model-profile "$MODEL_PROFILE"
     --models "$MODELS"
     --prompt "$PROMPT"
     --n-predict "$N_PREDICT"
@@ -112,7 +133,7 @@ mkdir -p "${RESULTS_DIR}"
 
 if [[ -z "${OUTPUT_CSV}" ]]; then
   TS="$(date +%Y%m%d_%H%M%S)"
-  OUTPUT_CSV="${RESULTS_DIR}/gguf_benchmark_${TS}.csv"
+  OUTPUT_CSV="${RESULTS_DIR}/gguf_benchmark_${MODEL_PROFILE}_${TS}.csv"
 fi
 
 # Normalize to absolute workspace path for container runs.
@@ -130,7 +151,7 @@ parse_line_number() {
 }
 
 for quant in ${MODELS}; do
-  model_path="${GGUF_DIR}/c64-ministral-3-8b-thinking-c64-${quant}.gguf"
+  model_path="${GGUF_DIR}/${MODEL_PREFIX}-${quant}.gguf"
   log_file="$(mktemp /tmp/gguf_bench_${quant}_XXXX.log)"
   smi_file="$(mktemp /tmp/gguf_smi_${quant}_XXXX.csv)"
 

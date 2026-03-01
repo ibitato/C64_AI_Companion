@@ -21,11 +21,18 @@ Prepare a clean and auditable C64 dataset for DAPT and SFT from source manuals i
 docker compose run --rm trainer bash scripts/container/pipeline.sh
 ```
 
+For 14B tokenizer/profile alignment:
+
+```bash
+docker compose run --rm trainer bash scripts/container/pipeline.sh --model-profile 14b
+```
+
 Manual run with explicit contract flags:
 
 ```bash
 python scripts/data_pipeline.py \
   --stage all \
+  --model-profile 8b \
   --allow-ocr \
   --max-examples-per-page 3 \
   --strict-thinking-contract
@@ -54,7 +61,9 @@ python scripts/data_qc_report.py \
 
 ## Notes
 
-- Base model tokenizer path is policy-restricted to `models/Ministral-3-8B-Thinking`.
+- Base model tokenizer path is policy-restricted to the selected profile canonical path:
+  - `models/Ministral-3-8B-Thinking` (`8b`)
+  - `models/Ministral-3-14B-Thinking` (`14b`)
 - OCR is enabled in container pipeline execution.
 - SFT generation filters low-signal boilerplate pages (for example: table-of-contents and copyright pages) and very noisy pages before creating chat examples.
 - SFT now includes multi-turn examples to improve format retention during chat.

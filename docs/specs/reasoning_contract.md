@@ -21,7 +21,8 @@ Constraints:
 ## Prompt Contract
 
 - Base model official system prompt is loaded from:
-  - `models/Ministral-3-8B-Thinking/SYSTEM_PROMPT.txt`
+  - `models/Ministral-3-8B-Thinking/SYSTEM_PROMPT.txt` (`8b`)
+  - `models/Ministral-3-14B-Thinking/SYSTEM_PROMPT.txt` (`14b`)
 - Project specialization is appended (not replacing base prompt).
 - Shared source of truth:
   - `scripts/prompt_contract.py`
@@ -62,7 +63,7 @@ For local runtime (`llama.cpp` / `Ollama`):
 
 Validation script:
 
-- `scripts/inference/validate_reasoning_behavior.sh`
+- `scripts/inference/validate_reasoning_behavior.sh --model-profile <8b|14b>`
 - Emits:
   - `metrics.csv`
   - `summary.md`

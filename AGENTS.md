@@ -6,7 +6,9 @@ These guidelines define how AI agents should operate in this repository to keep 
 
 ## 1. Core Model Policy (Hard Requirement)
 
-- The only valid base model path is `models/Ministral-3-8B-Thinking`.
+- Valid base model paths are profile-scoped:
+  - `models/Ministral-3-8B-Thinking` (`8b`)
+  - `models/Ministral-3-14B-Thinking` (`14b`)
 - Do not use user-global model cache paths as training base paths.
 - Fine-tuned outputs must remain under `models/`.
 
@@ -25,9 +27,14 @@ These guidelines define how AI agents should operate in this repository to keep 
 
 1. `docker compose build trainer`
 2. `docker compose run --rm trainer bash scripts/container/gpu_smoke.sh`
-3. `docker compose run --rm trainer bash scripts/container/pipeline.sh`
-4. `docker compose run --rm trainer bash scripts/container/train.sh`
+3. `docker compose run --rm trainer bash scripts/container/pipeline.sh` (default `8b`)
+4. `docker compose run --rm trainer bash scripts/container/train.sh` (default `8b`)
 5. `docker compose run --rm trainer pytest -q`
+
+For `14b`, set profile explicitly:
+
+- `docker compose run --rm trainer bash scripts/container/pipeline.sh --model-profile 14b`
+- `docker compose run --rm trainer bash scripts/container/train.sh --model-profile 14b`
 
 ## 5. Documentation Policy
 

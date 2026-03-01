@@ -6,7 +6,9 @@ Operational procedure to produce and validate deployable GGUF artifacts.
 
 ## Preconditions
 
-- Trained adapter available in `models/fine-tuned`.
+- Trained adapter available for selected profile:
+  - `models/fine-tuned` (`8b`)
+  - `models/fine-tuned-14b` (`14b`)
 - `llama.cpp` tooling available in `.cache/llama.cpp` (script can bootstrap it).
 
 ## Procedure
@@ -30,4 +32,4 @@ Operational procedure to produce and validate deployable GGUF artifacts.
 - Missing `sentencepiece`: rebuild image with pinned requirements.
 - Missing `llama-quantize`: build llama.cpp via script path.
 - Quantization failure: verify F16 source file integrity.
-- Thinking visible only intermittently: run `scripts/inference/validate_reasoning_behavior.sh` and inspect `summary.md`.
+- Thinking visible only intermittently: run `scripts/inference/validate_reasoning_behavior.sh --model-profile <8b|14b>` and inspect `summary.md`.

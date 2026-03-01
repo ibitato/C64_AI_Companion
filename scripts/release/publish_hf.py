@@ -14,34 +14,46 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+GITHUB_REPO_URL = "https://github.com/ibitato/C64_AI_Companion"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
 import torch
 from huggingface_hub import HfApi
+from model_profiles import DEFAULT_PROFILE_KEY, ModelProfile, available_profiles, get_model_profile
 
-DEFAULT_LORA_REPO = "ibitato/c64-ministral-3-8b-thinking-c64-reasoning-lora"
-DEFAULT_GGUF_REPO = "ibitato/c64-ministral-3-8b-thinking-c64-reasoning-gguf"
-DEFAULT_COLLECTION_URL = (
-    "https://huggingface.co/collections/ibitato/c64-ministral-3-8b-thinking-c64-reasoning-699d67350911049ec1a82e18"
-)
-BASE_MODEL_ID = "mistralai/Ministral-3-8B-Reasoning-2512"
-GITHUB_REPO_URL = "https://github.com/ibitato/C64_AI_Companion"
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LORA_DIR = PROJECT_ROOT / "models" / "fine-tuned"
-DAPT_DIR = PROJECT_ROOT / "models" / "fine-tuned-dapt"
-GGUF_DIR = PROJECT_ROOT / "models" / "gguf"
-BASE_CONFIG = PROJECT_ROOT / "models" / "Ministral-3-8B-Thinking" / "config.json"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 CHECKPOINT_RE = re.compile(r"checkpoint-(\d+)$")
 
 
+def profile_lora_dir(profile: ModelProfile) -> Path:
+    return PROJECT_ROOT / profile.sft_output_dir
+
+
+def profile_dapt_dir(profile: ModelProfile) -> Path:
+    return PROJECT_ROOT / profile.dapt_output_dir
+
+
+def profile_gguf_dir(profile: ModelProfile) -> Path:
+    return PROJECT_ROOT / profile.gguf_dir
+
+
+def profile_base_config(profile: ModelProfile) -> Path:
+    return PROJECT_ROOT / profile.base_model_path / "config.json"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Publish LoRA + GGUF artifacts to Hugging Face.")
-    parser.add_argument("--lora-repo-id", default=DEFAULT_LORA_REPO)
-    parser.add_argument("--gguf-repo-id", default=DEFAULT_GGUF_REPO)
+    parser.add_argument("--model-profile", choices=available_profiles(), default=DEFAULT_PROFILE_KEY)
+    parser.add_argument("--lora-repo-id", default=None)
+    parser.add_argument("--gguf-repo-id", default=None)
     parser.add_argument("--private", action="store_true", help="Create private repos.")
     parser.add_argument(
         "--token-env",
@@ -75,9 +87,9 @@ def hardlink_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-def load_context_length() -> int:
+def load_context_length(profile: ModelProfile) -> int:
     """Load max context length from the local base-model config."""
-    with BASE_CONFIG.open("r", encoding="utf-8") as f:
+    with profile_base_config(profile).open("r", encoding="utf-8") as f:
         cfg = json.load(f)
     return int(cfg["text_config"]["max_position_embeddings"])
 
@@ -159,14 +171,15 @@ def guess_lora_scope(target_modules: object) -> str:
     return "language_all_linear"
 
 
-def load_training_recipe() -> dict[str, object]:
+def load_training_recipe(profile: ModelProfile) -> dict[str, object]:
     """Collect key training recipe values from local artifacts."""
-    args_path = LORA_DIR / "training_args.bin"
+    lora_dir = profile_lora_dir(profile)
+    args_path = lora_dir / "training_args.bin"
     if not args_path.exists():
         raise FileNotFoundError(f"Missing expected training arguments artifact: {args_path}")
     args = torch.load(str(args_path), map_location="cpu", weights_only=False)
 
-    adapter_config_path = LORA_DIR / "adapter_config.json"
+    adapter_config_path = lora_dir / "adapter_config.json"
     if not adapter_config_path.exists():
         raise FileNotFoundError(f"Missing expected adapter config: {adapter_config_path}")
     adapter_cfg = load_json_file(adapter_config_path)
@@ -209,14 +222,16 @@ def load_git_revision() -> str | None:
         return None
 
 
-def load_training_summary() -> dict[str, object]:
+def load_training_summary(profile: ModelProfile) -> dict[str, object]:
     """Collect compact metadata from local training outputs for model cards."""
-    sft_ckpt = latest_checkpoint_dir(LORA_DIR)
-    dapt_ckpt = latest_checkpoint_dir(DAPT_DIR)
+    lora_dir = profile_lora_dir(profile)
+    dapt_dir = profile_dapt_dir(profile)
+    sft_ckpt = latest_checkpoint_dir(lora_dir)
+    dapt_ckpt = latest_checkpoint_dir(dapt_dir)
     if sft_ckpt is None:
-        raise FileNotFoundError(f"No SFT checkpoint found in {LORA_DIR}")
+        raise FileNotFoundError(f"No SFT checkpoint found in {lora_dir}")
     if dapt_ckpt is None:
-        raise FileNotFoundError(f"No DAPT checkpoint found in {DAPT_DIR}")
+        raise FileNotFoundError(f"No DAPT checkpoint found in {dapt_dir}")
 
     sft_state_path = sft_ckpt / "trainer_state.json"
     dapt_state_path = dapt_ckpt / "trainer_state.json"
@@ -234,7 +249,7 @@ def load_training_summary() -> dict[str, object]:
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "git_revision": load_git_revision(),
         "data_splits": load_data_split_summary(),
-        "training_recipe": load_training_recipe(),
+        "training_recipe": load_training_recipe(profile),
         "artifacts": {
             "dapt_checkpoint": dapt_ckpt.name,
             "sft_checkpoint": sft_ckpt.name,
@@ -251,7 +266,15 @@ def load_training_summary() -> dict[str, object]:
     }
 
 
-def render_lora_card(context_length: int, summary: dict[str, object], repo_id: str) -> str:
+def render_lora_card(
+    *,
+    context_length: int,
+    summary: dict[str, object],
+    repo_id: str,
+    profile: ModelProfile,
+    lora_repo_id: str,
+    gguf_repo_id: str,
+) -> str:
     """Render markdown model card content for the LoRA repository."""
     data = summary["data_splits"]
     recipe = summary["training_recipe"]
@@ -260,10 +283,16 @@ def render_lora_card(context_length: int, summary: dict[str, object], repo_id: s
     generated_at = summary.get("generated_at_utc", "unknown")
     git_rev = summary.get("git_revision", "unknown")
 
+    collection_line = (
+        f"- Collection: {profile.collection_url}\n"
+        if profile.collection_url
+        else ""
+    )
+
     return f"""---
 license: apache-2.0
 base_model:
-- {BASE_MODEL_ID}
+- {profile.base_model_id}
 library_name: peft
 pipeline_tag: text-generation
 tags:
@@ -281,7 +310,7 @@ language:
 
 ## Overview
 
-This repository contains the **LoRA adapter** produced by fine-tuning a reasoning-capable Ministral 3 8B model on technical Commodore 64 material.
+This repository contains the **LoRA adapter** produced by fine-tuning a reasoning-capable Ministral 3 {profile.model_size_label} model on technical Commodore 64 material.
 
 Objective:
 - keep the reasoning behavior of the base model,
@@ -292,13 +321,13 @@ Project source code and pipeline:
 - {GITHUB_REPO_URL}
 
 Related repositories:
-- LoRA: https://huggingface.co/{DEFAULT_LORA_REPO}
-- GGUF: https://huggingface.co/{DEFAULT_GGUF_REPO}
-- Collection: {DEFAULT_COLLECTION_URL}
+- LoRA: https://huggingface.co/{lora_repo_id}
+- GGUF: https://huggingface.co/{gguf_repo_id}
+{collection_line}
 
 ## Base Model
 
-- Base model: `{BASE_MODEL_ID}`
+- Base model: `{profile.base_model_id}`
 - Architecture: `Mistral3ForConditionalGeneration` (language component fine-tuned with LoRA)
 - Max context length: **{context_length:,} tokens** (from `text_config.max_position_embeddings`)
 
@@ -343,7 +372,7 @@ from peft import PeftModel
 from transformers import AutoTokenizer
 from transformers.models.mistral3 import Mistral3ForConditionalGeneration
 
-base_id = "{BASE_MODEL_ID}"
+base_id = "{profile.base_model_id}"
 adapter_id = "{repo_id}"
 
 tokenizer = AutoTokenizer.from_pretrained(base_id, trust_remote_code=True)
@@ -369,28 +398,65 @@ print(tokenizer.decode(out[0], skip_special_tokens=True))
 """
 
 
-def render_gguf_card(context_length: int, summary: dict[str, object], repo_id: str) -> str:
+def render_gguf_card(
+    *,
+    context_length: int,
+    summary: dict[str, object],
+    repo_id: str,
+    profile: ModelProfile,
+    lora_repo_id: str,
+    gguf_repo_id: str,
+) -> str:
     """Render markdown model card content for the GGUF repository."""
     data = summary["data_splits"]
     run = summary["run_state"]
     artifacts = summary.get("artifacts", {})
     generated_at = summary.get("generated_at_utc", "unknown")
     git_rev = summary.get("git_revision", "unknown")
+    gguf_dir = profile_gguf_dir(profile)
     files = [
-        "c64-ministral-3-8b-thinking-c64-F16.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q6_K.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q8_0.gguf",
+        f"{profile.gguf_prefix}-F16.gguf",
+        f"{profile.gguf_prefix}-Q4_K_M.gguf",
+        f"{profile.gguf_prefix}-Q6_K.gguf",
+        f"{profile.gguf_prefix}-Q8_0.gguf",
     ]
-    sizes = {}
+    sizes: dict[str, str] = {}
     for name in files:
-        p = GGUF_DIR / name
+        p = gguf_dir / name
         sizes[name] = f"{p.stat().st_size / (1024 ** 3):.2f} GiB" if p.exists() else "missing"
+
+    collection_line = (
+        f"- Collection: {profile.collection_url}\n"
+        if profile.collection_url
+        else ""
+    )
+    throughput_section = ""
+    if profile.key == "8b":
+        throughput_section = """
+## Reference Throughput (this workstation)
+
+Measured with `llama-bench` on ROCm (single run, `pp256` and `tg64`):
+
+| Quant | pp256 (tok/s) | tg64 (tok/s) |
+| --- | ---: | ---: |
+| Q4_K_M | 1080.50 | 33.52 |
+| Q6_K | 820.06 | 26.31 |
+| Q8_0 | 404.59 | 21.20 |
+| F16 | 546.18 | 10.68 |
+
+Numbers are hardware/runtime dependent and should be treated as reference only.
+"""
+    else:
+        throughput_section = """
+## Reference Throughput
+
+No workstation reference benchmarks are bundled yet for this profile.
+"""
 
     return f"""---
 license: apache-2.0
 base_model:
-- {DEFAULT_LORA_REPO}
+- {lora_repo_id}
 pipeline_tag: text-generation
 tags:
 - gguf
@@ -408,19 +474,19 @@ language:
 
 ## Overview
 
-GGUF exports of the C64-focused reasoning fine-tune, ready for **llama.cpp** and **Ollama**.
+GGUF exports of the C64-focused Ministral 3 {profile.model_size_label} reasoning fine-tune, ready for **llama.cpp** and **Ollama**.
 
 Project source code and training pipeline:
 - {GITHUB_REPO_URL}
 
 Related repositories:
-- LoRA: https://huggingface.co/{DEFAULT_LORA_REPO}
-- GGUF: https://huggingface.co/{DEFAULT_GGUF_REPO}
-- Collection: {DEFAULT_COLLECTION_URL}
+- LoRA: https://huggingface.co/{lora_repo_id}
+- GGUF: https://huggingface.co/{gguf_repo_id}
+{collection_line}
 
 ## Technical Details
 
-- Derived from: `{BASE_MODEL_ID}` + project LoRA adaptation
+- Derived from: `{profile.base_model_id}` + project LoRA adaptation
 - Context length in GGUF metadata: **{context_length:,} tokens**
 - Architecture in GGUF: `mistral3`
 
@@ -438,10 +504,10 @@ Related repositories:
 
 | File | Size |
 | --- | --- |
-| `c64-ministral-3-8b-thinking-c64-F16.gguf` | {sizes["c64-ministral-3-8b-thinking-c64-F16.gguf"]} |
-| `c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf` | {sizes["c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf"]} |
-| `c64-ministral-3-8b-thinking-c64-Q6_K.gguf` | {sizes["c64-ministral-3-8b-thinking-c64-Q6_K.gguf"]} |
-| `c64-ministral-3-8b-thinking-c64-Q8_0.gguf` | {sizes["c64-ministral-3-8b-thinking-c64-Q8_0.gguf"]} |
+| `{profile.gguf_prefix}-F16.gguf` | {sizes[f"{profile.gguf_prefix}-F16.gguf"]} |
+| `{profile.gguf_prefix}-Q4_K_M.gguf` | {sizes[f"{profile.gguf_prefix}-Q4_K_M.gguf"]} |
+| `{profile.gguf_prefix}-Q6_K.gguf` | {sizes[f"{profile.gguf_prefix}-Q6_K.gguf"]} |
+| `{profile.gguf_prefix}-Q8_0.gguf` | {sizes[f"{profile.gguf_prefix}-Q8_0.gguf"]} |
 
 `Modelfile` templates are included for direct Ollama import.
 
@@ -450,55 +516,51 @@ Related repositories:
 ### Ollama
 
 ```bash
-ollama create c64-ministral-c64 -f Modelfile.Q4_K_M
-ollama create c64-ministral-c64-q6 -f Modelfile.Q6_K
-ollama create c64-ministral-c64-q8 -f Modelfile.Q8_0
+ollama create {profile.ollama_base_name} -f Modelfile.Q4_K_M
+ollama create {profile.ollama_base_name}-q6 -f Modelfile.Q6_K
+ollama create {profile.ollama_base_name}-q8 -f Modelfile.Q8_0
 ```
 
 ### llama.cpp
 
 ```bash
-llama-cli -m c64-ministral-3-8b-thinking-c64-Q6_K.gguf -ngl 99 -c 4096 -n 256 -p "Explain VIC-II timing."
+llama-cli -m {profile.gguf_prefix}-Q6_K.gguf -ngl 99 -c 4096 -n 256 -p "Explain VIC-II timing."
 ```
 
 ### llama-server (OpenAI-compatible API / GUI reasoning panel)
 
 ```bash
-python3 scripts/prompt_contract.py --print-full > .cache/runtime/c64_system_prompt.txt
-llama-server \
-  -hf {DEFAULT_GGUF_REPO}:F16 \
-  --host 0.0.0.0 --port 8080 \
-  --jinja \
-  --reasoning-format deepseek \
-  --reasoning-budget -1 \
-  --system-prompt-file .cache/runtime/c64_system_prompt.txt \
-  --ctx-size 32768 \
-  -ngl 99 \
-  --temp 0.15 \
-  --threads "$(nproc)" \
+python3 scripts/prompt_contract.py --model-profile {profile.key} --print-full > .cache/runtime/c64_system_prompt_{profile.key}.txt
+llama-server \\
+  -hf {gguf_repo_id}:F16 \\
+  --host 0.0.0.0 --port 8080 \\
+  --jinja \\
+  --reasoning-format deepseek \\
+  --reasoning-budget -1 \\
+  --system-prompt-file .cache/runtime/c64_system_prompt_{profile.key}.txt \\
+  --ctx-size 32768 \\
+  -ngl 99 \\
+  --temp 0.15 \\
+  --threads "$(nproc)" \\
   --fit on
 ```
 
 Use `--reasoning-format none` for raw `[THINK]...[/THINK]` tags in `content` instead of separated reasoning fields.
-
-## Reference Throughput (this workstation)
-
-Measured with `llama-bench` on ROCm (single run, `pp256` and `tg64`):
-
-| Quant | pp256 (tok/s) | tg64 (tok/s) |
-| --- | ---: | ---: |
-| Q4_K_M | 1080.50 | 33.52 |
-| Q6_K | 820.06 | 26.31 |
-| Q8_0 | 404.59 | 21.20 |
-| F16 | 546.18 | 10.68 |
-
-Numbers are hardware/runtime dependent and should be treated as reference only.
+{throughput_section}
 """
 
 
-def prepare_lora_stage(stage_dir: Path, repo_id: str) -> None:
+def prepare_lora_stage(
+    stage_dir: Path,
+    repo_id: str,
+    profile: ModelProfile,
+    lora_repo_id: str,
+    gguf_repo_id: str,
+) -> None:
     """Build a temporary publish folder for LoRA artifacts."""
     stage_dir.mkdir(parents=True, exist_ok=True)
+    lora_dir = profile_lora_dir(profile)
+    dapt_dir = profile_dapt_dir(profile)
     for name in [
         "adapter_config.json",
         "adapter_model.safetensors",
@@ -507,14 +569,14 @@ def prepare_lora_stage(stage_dir: Path, repo_id: str) -> None:
         "chat_template.jinja",
         "training_args.bin",
     ]:
-        src = LORA_DIR / name
+        src = lora_dir / name
         if not src.exists():
             raise FileNotFoundError(f"Missing expected LoRA artifact: {src}")
         hardlink_or_copy(src, stage_dir / name)
 
     # Include trainer states for reproducibility.
-    sft_ckpt = latest_checkpoint_dir(LORA_DIR)
-    dapt_ckpt = latest_checkpoint_dir(DAPT_DIR)
+    sft_ckpt = latest_checkpoint_dir(lora_dir)
+    dapt_ckpt = latest_checkpoint_dir(dapt_dir)
     sft_state = sft_ckpt / "trainer_state.json" if sft_ckpt else None
     dapt_state = dapt_ckpt / "trainer_state.json" if dapt_ckpt else None
     if sft_state and sft_state.exists():
@@ -522,7 +584,7 @@ def prepare_lora_stage(stage_dir: Path, repo_id: str) -> None:
     if dapt_state and dapt_state.exists():
         hardlink_or_copy(dapt_state, stage_dir / "trainer_state_dapt.json")
 
-    summary = load_training_summary()
+    summary = load_training_summary(profile)
     (stage_dir / "training_summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"
     )
@@ -531,28 +593,42 @@ def prepare_lora_stage(stage_dir: Path, repo_id: str) -> None:
         encoding="utf-8",
     )
 
-    context_length = load_context_length()
+    context_length = load_context_length(profile)
     (stage_dir / "README.md").write_text(
-        render_lora_card(context_length=context_length, summary=summary, repo_id=repo_id),
+        render_lora_card(
+            context_length=context_length,
+            summary=summary,
+            repo_id=repo_id,
+            profile=profile,
+            lora_repo_id=lora_repo_id,
+            gguf_repo_id=gguf_repo_id,
+        ),
         encoding="utf-8",
     )
 
 
-def prepare_gguf_stage(stage_dir: Path, repo_id: str) -> None:
+def prepare_gguf_stage(
+    stage_dir: Path,
+    repo_id: str,
+    profile: ModelProfile,
+    lora_repo_id: str,
+    gguf_repo_id: str,
+) -> None:
     """Build a temporary publish folder for GGUF artifacts."""
     stage_dir.mkdir(parents=True, exist_ok=True)
+    gguf_dir = profile_gguf_dir(profile)
     for name in [
-        "c64-ministral-3-8b-thinking-c64-F16.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q6_K.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q8_0.gguf",
+        f"{profile.gguf_prefix}-F16.gguf",
+        f"{profile.gguf_prefix}-Q4_K_M.gguf",
+        f"{profile.gguf_prefix}-Q6_K.gguf",
+        f"{profile.gguf_prefix}-Q8_0.gguf",
         "Modelfile",
         "Modelfile.F16",
         "Modelfile.Q4_K_M",
         "Modelfile.Q6_K",
         "Modelfile.Q8_0",
     ]:
-        src = GGUF_DIR / name
+        src = gguf_dir / name
         if not src.exists():
             raise FileNotFoundError(f"Missing expected GGUF artifact: {src}")
         hardlink_or_copy(src, stage_dir / name)
@@ -561,10 +637,17 @@ def prepare_gguf_stage(stage_dir: Path, repo_id: str) -> None:
         "*.gguf filter=lfs diff=lfs merge=lfs -text\n",
         encoding="utf-8",
     )
-    context_length = load_context_length()
-    summary = load_training_summary()
+    context_length = load_context_length(profile)
+    summary = load_training_summary(profile)
     (stage_dir / "README.md").write_text(
-        render_gguf_card(context_length=context_length, summary=summary, repo_id=repo_id),
+        render_gguf_card(
+            context_length=context_length,
+            summary=summary,
+            repo_id=repo_id,
+            profile=profile,
+            lora_repo_id=lora_repo_id,
+            gguf_repo_id=gguf_repo_id,
+        ),
         encoding="utf-8",
     )
 
@@ -587,19 +670,35 @@ def upload_repo(api: HfApi, repo_id: str, stage_dir: Path, private: bool, dry_ru
     print(f"Uploaded: https://huggingface.co/{repo_id}")
 
 
-def upload_gguf_repo(api: HfApi, repo_id: str, private: bool, dry_run: bool) -> None:
+def upload_gguf_repo(
+    api: HfApi,
+    repo_id: str,
+    private: bool,
+    dry_run: bool,
+    profile: ModelProfile,
+    lora_repo_id: str,
+    gguf_repo_id: str,
+) -> None:
     """Upload GGUF artifacts incrementally to reduce temporary disk pressure."""
+    gguf_dir = profile_gguf_dir(profile)
     print(f"\n==> Preparing upload for {repo_id}")
     if dry_run:
         print(f"[dry-run] Would create repo: {repo_id} (private={private})")
-        print(f"[dry-run] Would upload README + Modelfiles + GGUF files from {GGUF_DIR}")
+        print(f"[dry-run] Would upload README + Modelfiles + GGUF files from {gguf_dir}")
         return
 
     api.create_repo(repo_id=repo_id, repo_type="model", private=private, exist_ok=True)
 
-    context_length = load_context_length()
-    summary = load_training_summary()
-    readme = render_gguf_card(context_length=context_length, summary=summary, repo_id=repo_id)
+    context_length = load_context_length(profile)
+    summary = load_training_summary(profile)
+    readme = render_gguf_card(
+        context_length=context_length,
+        summary=summary,
+        repo_id=repo_id,
+        profile=profile,
+        lora_repo_id=lora_repo_id,
+        gguf_repo_id=gguf_repo_id,
+    )
     with tempfile.TemporaryDirectory(prefix="hf_publish_gguf_meta_") as tmp:
         tmp_root = Path(tmp)
         readme_path = tmp_root / "README.md"
@@ -628,12 +727,12 @@ def upload_gguf_repo(api: HfApi, repo_id: str, private: bool, dry_run: bool) -> 
         "Modelfile.Q4_K_M",
         "Modelfile.Q6_K",
         "Modelfile.Q8_0",
-        "c64-ministral-3-8b-thinking-c64-F16.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q4_K_M.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q6_K.gguf",
-        "c64-ministral-3-8b-thinking-c64-Q8_0.gguf",
+        f"{profile.gguf_prefix}-F16.gguf",
+        f"{profile.gguf_prefix}-Q4_K_M.gguf",
+        f"{profile.gguf_prefix}-Q6_K.gguf",
+        f"{profile.gguf_prefix}-Q8_0.gguf",
     ]:
-        src = GGUF_DIR / name
+        src = gguf_dir / name
         if not src.exists():
             raise FileNotFoundError(f"Missing expected GGUF artifact: {src}")
         print(f"Uploading {name} ...")
@@ -651,6 +750,10 @@ def upload_gguf_repo(api: HfApi, repo_id: str, private: bool, dry_run: bool) -> 
 def main() -> None:
     """Publish LoRA and GGUF repositories to Hugging Face Hub."""
     args = parse_args()
+    profile = get_model_profile(args.model_profile)
+    lora_repo_id = args.lora_repo_id or profile.lora_repo_id
+    gguf_repo_id = args.gguf_repo_id or profile.gguf_repo_id
+
     token = require_token(args.token_env)
     api = HfApi(token=token)
 
@@ -672,16 +775,30 @@ def main() -> None:
         tmp_root = Path(tmp)
         if not args.skip_lora:
             lora_stage = tmp_root / "lora"
-            prepare_lora_stage(lora_stage, repo_id=args.lora_repo_id)
-            upload_repo(api, args.lora_repo_id, lora_stage, private=args.private, dry_run=args.dry_run)
+            prepare_lora_stage(
+                lora_stage,
+                repo_id=lora_repo_id,
+                profile=profile,
+                lora_repo_id=lora_repo_id,
+                gguf_repo_id=gguf_repo_id,
+            )
+            upload_repo(api, lora_repo_id, lora_stage, private=args.private, dry_run=args.dry_run)
         if not args.skip_gguf:
-            upload_gguf_repo(api, args.gguf_repo_id, private=args.private, dry_run=args.dry_run)
+            upload_gguf_repo(
+                api,
+                gguf_repo_id,
+                private=args.private,
+                dry_run=args.dry_run,
+                profile=profile,
+                lora_repo_id=lora_repo_id,
+                gguf_repo_id=gguf_repo_id,
+            )
 
     print("\nDone.")
     if not args.skip_lora:
-        print(f"LoRA repo: https://huggingface.co/{args.lora_repo_id}")
+        print(f"LoRA repo: https://huggingface.co/{lora_repo_id}")
     if not args.skip_gguf:
-        print(f"GGUF repo: https://huggingface.co/{args.gguf_repo_id}")
+        print(f"GGUF repo: https://huggingface.co/{gguf_repo_id}")
 
 
 if __name__ == "__main__":
